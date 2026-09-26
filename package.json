@@ -1,7 +1,8 @@
 {
   "name": "w3r",
   "version": "1.0.0",
-  "description": "Visualizzatore e stampa di file Markdown per Windows (Neutralinojs)",
+  "description": "Visualizzatore e stampa di file Markdown multipiattaforma (Neutralinojs)",
+  "author": "leolmi <leo.olmi@gmail.com>",
   "private": true,
   "scripts": {
     "postinstall": "node scripts/copy-vendor.js && neu update",

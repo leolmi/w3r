@@ -1,4 +1,5 @@
-// Persistent data in %APPDATA%\w3r: settings shared by all instances and the registry of open windows.
+// Persistent data in the OS data folder (%APPDATA%\w3r, ~/Library/Application Support/w3r, ~/.local/share/w3r):
+// settings shared by all instances and the registry of open windows.
 // localStorage cannot be used, since every instance runs on a random port (a different origin).
 
 const INSTANCE_HEARTBEAT_MS = 10000;
@@ -9,9 +10,8 @@ let appDataDir = null;
 
 async function getAppDataDir() {
   if (!appDataDir) {
-    const base = (await Neutralino.os.getPath('data')).replace(/\//g, '\\');
-    appDataDir = `${base}\\w3r`;
-    await Neutralino.filesystem.createDirectory(`${appDataDir}\\instances`).catch(() => {});
+    appDataDir = joinPath(toNativePath(await Neutralino.os.getPath('data')), 'w3r');
+    await Neutralino.filesystem.createDirectory(joinPath(appDataDir, 'instances')).catch(() => {});
   }
   return appDataDir;
 }
@@ -25,12 +25,12 @@ async function readJson(path) {
 }
 
 async function loadSettings() {
-  return (await readJson(`${await getAppDataDir()}\\settings.json`)) || {};
+  return (await readJson(joinPath(await getAppDataDir(), 'settings.json'))) || {};
 }
 
 // Last writer wins: settings are small and changed one at a time
 async function saveSetting(key, value) {
-  const path = `${await getAppDataDir()}\\settings.json`;
+  const path = joinPath(await getAppDataDir(), 'settings.json');
   const settings = (await readJson(path)) || {};
   settings[key] = value;
   await Neutralino.filesystem.writeFile(path, JSON.stringify(settings, null, 2)).catch(() => {});
@@ -38,7 +38,7 @@ async function saveSetting(key, value) {
 
 // Each instance owns one file (no write conflicts) with its window position and a heartbeat timestamp
 async function instanceFile() {
-  return `${await getAppDataDir()}\\instances\\${NL_PID}.json`;
+  return joinPath(await getAppDataDir(), 'instances', `${NL_PID}.json`);
 }
 
 async function writeInstance() {
@@ -49,12 +49,12 @@ async function writeInstance() {
 }
 
 async function liveInstancePositions() {
-  const dir = `${await getAppDataDir()}\\instances`;
+  const dir = joinPath(await getAppDataDir(), 'instances');
   const entries = await Neutralino.filesystem.readDirectory(dir).catch(() => []);
   const positions = [];
   for (const entry of entries) {
     if (entry.type !== 'FILE' || entry.entry === `${NL_PID}.json`) continue;
-    const path = `${dir}\\${entry.entry}`;
+    const path = joinPath(dir, entry.entry);
     const data = await readJson(path);
     if (data && Date.now() - data.at < INSTANCE_STALE_MS) positions.push(data);
     else await Neutralino.filesystem.remove(path).catch(() => {});

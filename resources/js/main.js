@@ -23,28 +23,21 @@ const forwardStack = [];
 let mountPoint = null;
 let mountCounter = 0;
 
-function dirOf(path) {
-  return path.replace(/[\\/][^\\/]*$/, '');
-}
-
-function extensionOf(path) {
-  const match = /\.([^.\\/]+)$/.exec(path);
-  return match ? match[1].toLowerCase() : '';
-}
-
 // Resolves a relative link (URL syntax) against the folder of the current document
 function resolvePath(href) {
-  const target = decodeURIComponent(href).replace(/\//g, '\\');
-  if (/^[a-zA-Z]:\\/.test(target)) return target;
+  // "file:///C:/..." leaves a slash before the drive letter
+  const target = toNativePath(decodeURIComponent(href)).replace(/^\\([a-zA-Z]:\\)/, '$1');
+  if (isAbsolutePath(target)) return target;
 
   const base = currentPath ? dirOf(currentPath) : '';
-  const parts = target.startsWith('\\') ? [base.slice(0, 2)] : base.split('\\');
-  for (const segment of target.split('\\')) {
+  // Only on Windows a path can start with a separator without being absolute: it refers to the root of the drive
+  const parts = target.startsWith(SEP) ? [base.slice(0, 2)] : base.split(SEP);
+  for (const segment of target.split(SEP)) {
     if (segment === '' || segment === '.') continue;
     if (segment === '..') { if (parts.length > 1) parts.pop(); }
     else parts.push(segment);
   }
-  return parts.join('\\');
+  return parts.join(SEP);
 }
 
 // GitHub-style heading ids, so that "#section" links work
@@ -141,7 +134,7 @@ function scrollToAnchor(anchor) {
 async function loadPath(path, anchor) {
   try {
     const text = await Neutralino.filesystem.readFile(path);
-    await render(text, path.split('\\').pop(), path);
+    await render(text, baseNameOf(path), path);
     scrollToAnchor(anchor);
     return true;
   } catch (err) {
@@ -182,7 +175,7 @@ async function openDialog() {
       { name: 'Tutti i file', extensions: ['*'] }
     ]
   });
-  if (entries.length) navigateTo(entries[0].replace(/\//g, '\\'));
+  if (entries.length) navigateTo(toNativePath(entries[0]));
 }
 
 content.addEventListener('click', (e) => {
@@ -206,7 +199,7 @@ content.addEventListener('click', (e) => {
     return;
   }
 
-  const [pathPart, anchor] = href.replace(/^file:\/+/i, '').split('#');
+  const [pathPart, anchor] = href.replace(/^file:\/\/(localhost)?/i, '').split('#');
   if (!pathPart) return;
   const path = resolvePath(pathPart);
   if (MD_EXTENSIONS.includes(extensionOf(path))) navigateTo(path, anchor);
@@ -234,7 +227,8 @@ document.addEventListener('wheel', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); }
   if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); }
-  if (!e.ctrlKey) return;
+  // Ctrl on Windows/Linux, Cmd on macOS
+  if (!e.ctrlKey && !e.metaKey) return;
   if (e.key === 'o') { e.preventDefault(); openDialog(); }
   if (e.key === 'p' && !btnPrint.disabled) { e.preventDefault(); window.print(); }
 });
@@ -277,8 +271,8 @@ Neutralino.events.on('ready', async () => {
 
   const fileArg = NL_ARGS.slice(1).find((arg) => !arg.startsWith('--'));
   if (!fileArg) { restoreState(); return; }
-  const path = fileArg.replace(/\//g, '\\');
-  navigateTo(/^[a-zA-Z]:\\/.test(path) ? path : `${NL_CWD.replace(/\//g, '\\')}\\${path}`);
+  const path = toNativePath(fileArg);
+  navigateTo(isAbsolutePath(path) ? path : joinPath(toNativePath(NL_CWD), path));
 });
 
 setZoom(100, false);
