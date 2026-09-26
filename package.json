@@ -1,0 +1,19 @@
+{
+  "name": "w3r",
+  "version": "1.0.0",
+  "description": "Visualizzatore e stampa di file Markdown per Windows (Neutralinojs)",
+  "private": true,
+  "scripts": {
+    "postinstall": "node scripts/copy-vendor.js && neu update",
+    "dev": "neu run",
+    "build": "neu build --embed-resources --clean",
+    "installer": "npm run build && node scripts/installer.js"
+  },
+  "devDependencies": {
+    "@neutralinojs/neu": "^11.7.2",
+    "dompurify": "^3.4.16",
+    "github-markdown-css": "^5.9.0",
+    "marked": "^18.0.14",
+    "png2icons": "^2.0.1"
+  }
+}

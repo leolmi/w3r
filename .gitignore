@@ -1,0 +1,8 @@
+node_modules/
+bin/
+dist/
+resources/js/neutralino.js
+resources/vendor/
+.tmp/
+neutralinojs.log
+installer/app.ico

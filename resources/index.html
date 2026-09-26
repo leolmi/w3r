@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>w3r</title>
+  <base id="doc-base" href="/">
+  <link rel="stylesheet" href="/vendor/github-markdown-light.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="sidebar">
+    <button id="btn-back" class="icon-btn" title="Indietro (Alt+←)" aria-label="Indietro" disabled>
+      <span class="icon" style="--icon: url(/icons/arrow_back.svg)"></span>
+    </button>
+    <button id="btn-forward" class="icon-btn" title="Avanti (Alt+→)" aria-label="Avanti" disabled>
+      <span class="icon" style="--icon: url(/icons/arrow_forward.svg)"></span>
+    </button>
+    <hr>
+    <button id="btn-open" class="icon-btn" title="Apri (Ctrl+O)" aria-label="Apri">
+      <span class="icon" style="--icon: url(/icons/folder_open.svg)"></span>
+    </button>
+    <button id="btn-print" class="icon-btn" title="Stampa (Ctrl+P)" aria-label="Stampa" disabled>
+      <span class="icon" style="--icon: url(/icons/print.svg)"></span>
+    </button>
+    <hr>
+    <button id="btn-zoom-in" class="icon-btn" title="Aumenta zoom (Ctrl++)" aria-label="Aumenta zoom">
+      <span class="icon" style="--icon: url(/icons/zoom_in.svg)"></span>
+    </button>
+    <button id="btn-zoom-out" class="icon-btn" title="Riduci zoom (Ctrl+-)" aria-label="Riduci zoom">
+      <span class="icon" style="--icon: url(/icons/zoom_out.svg)"></span>
+    </button>
+    <button id="btn-zoom-reset" class="icon-btn" title="Zoom 100% (Ctrl+0)" aria-label="Zoom 100%" disabled>
+      <span class="icon" style="--icon: url(/icons/fit_screen.svg)"></span>
+    </button>
+  </nav>
+  <div id="zoom-badge" aria-live="polite"></div>
+  <main id="drop-zone">
+    <article id="content" class="markdown-body">
+      <p class="placeholder">Apri un file .md oppure trascinalo qui.</p>
+    </article>
+  </main>
+
+  <script src="/js/neutralino.js"></script>
+  <script src="/vendor/marked.umd.js"></script>
+  <script src="/vendor/purify.min.js"></script>
+  <script src="/js/storage.js"></script>
+  <script src="/js/main.js"></script>
+</body>
+</html>
