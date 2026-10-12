@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <title>w3r</title>
-  <base id="doc-base" href="/">
   <link rel="stylesheet" href="/vendor/github-markdown-light.css">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -19,6 +18,18 @@
     <button id="btn-open" class="icon-btn" title="Apri (Ctrl+O)" aria-label="Apri">
       <span class="icon" style="--icon: url(/icons/folder_open.svg)"></span>
     </button>
+    <button id="btn-open-column" class="icon-btn" title="Apri in una nuova colonna (Ctrl+Maiusc+O)" aria-label="Apri in una nuova colonna">
+      <span class="icon" style="--icon: url(/icons/add_column.svg)"></span>
+    </button>
+    <button id="btn-edit" class="icon-btn" title="Modifica (Ctrl+E)" aria-label="Modifica" disabled>
+      <span class="icon" style="--icon: url(/icons/edit.svg)"></span>
+    </button>
+    <button id="btn-save" class="icon-btn" title="Salva (Ctrl+S)" aria-label="Salva" disabled>
+      <span class="icon" style="--icon: url(/icons/save.svg)"></span>
+    </button>
+    <button id="btn-discard" class="icon-btn" title="Annulla tutte le modifiche" aria-label="Annulla tutte le modifiche" disabled>
+      <span class="icon" style="--icon: url(/icons/undo.svg)"></span>
+    </button>
     <button id="btn-print" class="icon-btn" title="Stampa (Ctrl+P)" aria-label="Stampa" disabled>
       <span class="icon" style="--icon: url(/icons/print.svg)"></span>
     </button>
@@ -32,18 +43,48 @@
     <button id="btn-zoom-reset" class="icon-btn" title="Zoom 100% (Ctrl+0)" aria-label="Zoom 100%" disabled>
       <span class="icon" style="--icon: url(/icons/fit_screen.svg)"></span>
     </button>
+    <button id="btn-settings" class="icon-btn" title="Impostazioni" aria-label="Impostazioni">
+      <span class="icon" style="--icon: url(/icons/settings.svg)"></span>
+    </button>
   </nav>
+  <dialog id="settings" aria-labelledby="settings-title">
+    <form method="dialog">
+      <h2 id="settings-title">Impostazioni</h2>
+      <label class="setting">
+        <span>Zoom dei documenti</span>
+        <select id="setting-zoom"></select>
+      </label>
+      <label class="setting checkbox">
+        <input type="checkbox" id="setting-new-window">
+        <span>Apri ogni file da Esplora risorse in una nuova finestra<br>
+          <small>Altrimenti il file si aggiunge all'ultima finestra di w3r selezionata</small></span>
+      </label>
+      <div class="settings-actions"><button class="text-btn">Chiudi</button></div>
+    </form>
+  </dialog>
   <div id="zoom-badge" aria-live="polite"></div>
-  <main id="drop-zone">
-    <article id="content" class="markdown-body">
-      <p class="placeholder">Apri un file .md oppure trascinalo qui.</p>
-    </article>
-  </main>
+  <div id="columns-area">
+    <main id="columns"></main>
+    <button id="btn-scroll-left" class="scroll-btn" title="Colonna nascosta a sinistra" aria-label="Mostra la colonna a sinistra" hidden>
+      <span class="icon" style="--icon: url(/icons/chevron_left.svg)"></span>
+    </button>
+    <button id="btn-scroll-right" class="scroll-btn" title="Colonna nascosta a destra" aria-label="Mostra la colonna a destra" hidden>
+      <span class="icon" style="--icon: url(/icons/chevron_right.svg)"></span>
+    </button>
+  </div>
+  <aside id="file-list" aria-label="File visti" hidden>
+    <header class="file-list-header">
+      <span id="file-list-count"></span>
+      <button id="btn-close-all" class="icon-btn small" title="Chiudi tutti i documenti e svuota l'elenco" aria-label="Chiudi tutti i documenti">
+        <span class="icon" style="--icon: url(/icons/playlist_remove.svg)"></span>
+      </button>
+    </header>
+    <ul id="file-list-items"></ul>
+  </aside>
 
   <script src="/js/neutralino.js"></script>
   <script src="/vendor/marked.umd.js"></script>
   <script src="/vendor/purify.min.js"></script>
-  <script src="/js/paths.js"></script>
   <script src="/js/storage.js"></script>
   <script src="/js/main.js"></script>
 </body>

@@ -15,6 +15,7 @@
   "nativeAllowList": [
     "app.*",
     "os.showOpenDialog",
+    "os.showSaveDialog",
     "os.showMessageBox",
     "os.open",
     "server.mount",
@@ -27,7 +28,12 @@
     "window.getPosition",
     "window.move",
     "filesystem.readDirectory",
-    "filesystem.remove"
+    "filesystem.remove",
+    "window.show",
+    "window.focus",
+    "window.unminimize",
+    "window.setAlwaysOnTop",
+    "os.execCommand"
   ],
   "modes": {
     "window": {
@@ -39,7 +45,8 @@
       "enableInspector": false,
       "exitProcessOnClose": false,
       "icon": "/resources/icons/app.png",
-      "center": true
+      "center": true,
+      "hidden": true
     }
   },
   "cli": {

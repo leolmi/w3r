@@ -4,5 +4,9 @@ dist/
 resources/js/neutralino.js
 resources/vendor/
 .tmp/
+tmp/
 neutralinojs.log
 installer/app.ico
+
+# IDE
+.idea/
