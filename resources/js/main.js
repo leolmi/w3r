@@ -12,6 +12,7 @@ const zoomBadge = document.getElementById('zoom-badge');
 const btnEdit = document.getElementById('btn-edit');
 const btnSave = document.getElementById('btn-save');
 const btnDiscard = document.getElementById('btn-discard');
+const btnWrap = document.getElementById('btn-wrap');
 const fileList = document.getElementById('file-list');
 const fileListItems = document.getElementById('file-list-items');
 const btnOpenColumn = document.getElementById('btn-open-column');
@@ -28,6 +29,23 @@ const MD_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd'];
 
 // Relative resource URLs (images, media) are rewritten onto the mount point of the column's folder
 const RELATIVE_URL = /^(?![a-z][a-z0-9+.-]*:|[\\/#])/i;
+
+// Page break: a line with only <!-- pagebreak --> (hidden by other viewers) or \pagebreak / \newpage (Pandoc)
+const PAGE_BREAK = /^ {0,3}(?:<!--\s*(?:pagebreak|newpage)\s*-->|\\(?:pagebreak|newpage))[ \t]*(?:\n+|$)/i;
+
+marked.use({
+  extensions: [{
+    name: 'pageBreak',
+    level: 'block',
+    // Lets the marker interrupt a paragraph
+    start: (src) => src.match(/^ {0,3}(?:<!--\s*(?:pagebreak|newpage)\s*-->|\\(?:pagebreak|newpage))[ \t]*$/im)?.index,
+    tokenizer(src) {
+      const match = PAGE_BREAK.exec(src);
+      if (match) return { type: 'pageBreak', raw: match[0] };
+    },
+    renderer: () => '<div class="page-break"></div>\n'
+  }]
+});
 
 function dirOf(path) {
   return path.replace(/[\\/][^\\/]*$/, '');
@@ -63,6 +81,7 @@ class Column {
     this.renderedText = '';
     this.eol = '\n';
     this.editing = false;
+    this.wrap = false;
     this.mountPoint = null;
 
     this.el = document.createElement('section');
@@ -81,7 +100,7 @@ class Column {
           <article class="markdown-body">
             <p class="placeholder">Apri un file .md oppure trascinalo qui.</p>
           </article>
-          <textarea class="editor" spellcheck="false" aria-label="Testo Markdown"></textarea>
+          <textarea class="editor" wrap="off" spellcheck="false" aria-label="Testo Markdown"></textarea>
         </div>
       </div>`;
     this.title = this.el.querySelector('.column-title');
@@ -227,8 +246,19 @@ class Column {
   fitEditor() {
     const scroll = this.scroller.scrollTop;
     this.editor.style.height = 'auto';
-    this.editor.style.height = `${this.editor.scrollHeight}px`;
+    // Plus the horizontal scrollbar, if any (the border-box height includes it, scrollHeight does not)
+    this.editor.style.height = `${this.editor.scrollHeight + this.editor.offsetHeight - this.editor.clientHeight}px`;
     this.scroller.scrollTop = scroll;
+  }
+
+  // Long lines (code blocks and the source) wrap instead of scrolling sideways, for this column only
+  setWrap(value) {
+    this.wrap = value;
+    this.sheet.classList.toggle('wrap', value);
+    this.editor.wrap = value ? 'soft' : 'off';
+    if (this.editing) this.fitEditor();
+    updateUI();
+    saveState();
   }
 
   setEditing(value) {
@@ -613,6 +643,9 @@ function updateUI() {
   const dirty = active.isDirty();
   btnSave.disabled = !dirty;
   btnDiscard.disabled = !dirty;
+  btnWrap.disabled = !active.loaded;
+  btnWrap.classList.toggle('pressed', active.wrap);
+  btnWrap.setAttribute('aria-pressed', active.wrap);
 
   const label = active.editing ? 'Anteprima (Ctrl+E)' : 'Modifica (Ctrl+E)';
   btnEdit.title = label;
@@ -715,7 +748,22 @@ function renderFileList() {
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = `${openIn.some((c) => c.isDirty()) ? '● ' : ''}${isDropped(entry) ? entry.file.name : fileName(entry)}`;
-    item.append(name);
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.append(name);
+
+    // Folder under the name, to tell apart files with the same name; the full path is in the tooltip
+    const folder = isDropped(entry)
+      ? entry.key.slice(1).split('/').slice(0, -1).join('/')
+      : entry.split('\\').slice(0, -1).join('\\');
+    if (folder) {
+      const path = document.createElement('span');
+      path.className = 'path';
+      // Marks keep the path left to right inside the rtl box that cuts it on the left
+      path.textContent = `‎${folder}‎`;
+      label.append(path);
+    }
+    item.append(label);
 
     for (const column of openIn) {
       const number = columns.indexOf(column) + 1;
@@ -758,7 +806,7 @@ function renderFileList() {
 function saveState() {
   try {
     sessionStorage.setItem('w3r-state', JSON.stringify({
-      columns: columns.map((c) => ({ path: c.path, back: c.back, forward: c.forward })),
+      columns: columns.map((c) => ({ path: c.path, back: c.back, forward: c.forward, wrap: c.wrap })),
       active: columns.indexOf(active),
       visited: visited.filter((entry) => !isDropped(entry))
     }));
@@ -774,6 +822,7 @@ async function restoreState() {
     const column = index ? addColumn() : columns[0];
     column.back.push(...saved.back);
     column.forward.push(...saved.forward);
+    if (saved.wrap) column.setWrap(true);
     // A file that can no longer be read would leave an empty column
     if (saved.path) column.loadPath(saved.path).then((ok) => { if (!ok) closeColumn(column); });
   });
@@ -860,6 +909,7 @@ btnPrint.addEventListener('click', printDocument);
 btnEdit.addEventListener('click', () => active.flip());
 btnSave.addEventListener('click', () => active.save());
 btnDiscard.addEventListener('click', () => active.discard());
+btnWrap.addEventListener('click', () => { if (active.loaded) active.setWrap(!active.wrap); });
 btnBack.addEventListener('click', () => active.goBack());
 btnForward.addEventListener('click', () => active.goForward());
 btnZoomIn.addEventListener('click', () => zoomStep(1));
@@ -916,6 +966,7 @@ document.addEventListener('wheel', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); active.goBack(); }
   if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); active.goForward(); }
+  if (e.altKey && e.key.toLowerCase() === 'z' && active.loaded) { e.preventDefault(); active.setWrap(!active.wrap); }
   if (!e.ctrlKey) return;
   // Ctrl+Shift+PageUp/PageDown move the active column, as with browser tabs
   if (e.shiftKey && (e.key === 'PageUp' || e.key === 'PageDown')) {

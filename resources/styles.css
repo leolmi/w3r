@@ -44,6 +44,10 @@ body { display: flex; }
 .icon-btn:hover:not(:disabled) { background: #eaeef2; color: #1f2328; }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
 
+/* Toggle buttons when on */
+.icon-btn.pressed { background: #ddf4ff; color: #0969da; }
+.icon-btn.pressed:hover:not(:disabled) { background: #b6e3ff; color: #0969da; }
+
 /* Material Symbols SVG used as a mask, so the icon takes the button text color */
 .icon {
   width: 24px;
@@ -241,6 +245,11 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   tab-size: 4;
 }
 
+/* Without wrapping the source scrolls sideways on its own; with it, code blocks wrap too */
+.sheet:not(.wrap) .editor { overflow-x: auto; }
+.sheet.wrap .markdown-body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.sheet.wrap .markdown-body pre code { white-space: inherit; overflow-wrap: inherit; }
+
 /* Settings at the bottom of the sidebar */
 #btn-settings { margin-top: auto; }
 
@@ -329,7 +338,21 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 
 #file-list-items li.dirty { border-left-color: #fb8f44; background: #fff1e5; color: #bc4c00; }
 
-#file-list-items .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#file-list-items .label { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 3px 0; }
+
+#file-list-items .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Folder of the file: small and muted, a long one is cut on the left so the closest folders stay visible */
+#file-list-items .path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  color: #8c959f;
+  font-size: 11px;
+  font-weight: normal;
+}
 
 #file-list-items .badge {
   min-width: 18px;
@@ -388,6 +411,9 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 
 #zoom-badge.visible { opacity: 1; }
 
+/* Page break: a dashed line on screen, a new page in print */
+.markdown-body .page-break { margin: 24px 0; border-top: 1px dashed #d1d9e0; }
+
 @media print {
   /* Keep in sync with --print-page-width */
   @page { size: A4; margin: 15mm; }
@@ -416,4 +442,7 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   .markdown-body blockquote { break-inside: avoid; }
 
   .markdown-body h1, .markdown-body h2, .markdown-body h3 { break-after: avoid; }
+
+  .markdown-body .page-break { margin: 0; border: none; break-after: page; }
+  .markdown-body .page-break + * { margin-top: 0 !important; }
 }

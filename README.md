@@ -19,8 +19,12 @@ npm run installer   # installer in dist/w3r-setup-<versione>.exe (richiede Inno 
 
 Richiede WebView2 (già presente su Windows 10/11).
 
+Per un salto pagina in stampa, una riga che contiene solo `<!-- pagebreak -->` (oppure `\pagebreak`
+o `\newpage`).
+
 | Scorciatoia | Azione |
 |---|---|
 | Ctrl+O | Apri file |
 | Ctrl+P | Stampa |
 | Alt+← / Alt+→ | Indietro / Avanti |
+| Alt+Z | A capo automatico (per colonna) |
