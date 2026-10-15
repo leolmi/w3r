@@ -13,6 +13,8 @@ const btnEdit = document.getElementById('btn-edit');
 const btnSave = document.getElementById('btn-save');
 const btnDiscard = document.getElementById('btn-discard');
 const btnWrap = document.getElementById('btn-wrap');
+const btnInsert = document.getElementById('btn-insert');
+const insertMenu = document.getElementById('insert-menu');
 const fileList = document.getElementById('file-list');
 const fileListItems = document.getElementById('file-list-items');
 const btnOpenColumn = document.getElementById('btn-open-column');
@@ -24,6 +26,8 @@ const btnSettings = document.getElementById('btn-settings');
 const settingsDialog = document.getElementById('settings');
 const settingZoom = document.getElementById('setting-zoom');
 const settingNewWindow = document.getElementById('setting-new-window');
+const settingTheme = document.getElementById('setting-theme');
+const settingMdTheme = document.getElementById('setting-md-theme');
 
 const MD_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd'];
 
@@ -259,6 +263,17 @@ class Column {
     if (this.editing) this.fitEditor();
     updateUI();
     saveState();
+  }
+
+  // Inserts a block on lines of its own at the caret, separated by blank lines (execCommand keeps the undo history)
+  insertBlock(block) {
+    const { value, selectionStart, selectionEnd } = this.editor;
+    const before = value.slice(0, selectionStart);
+    const after = value.slice(selectionEnd);
+    const prefix = !before || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = after.startsWith('\n\n') ? '' : after.startsWith('\n') || !after ? '\n' : '\n\n';
+    this.editor.focus({ preventScroll: true });
+    document.execCommand('insertText', false, `${prefix}${block}${suffix}`);
   }
 
   setEditing(value) {
@@ -646,6 +661,8 @@ function updateUI() {
   btnWrap.disabled = !active.loaded;
   btnWrap.classList.toggle('pressed', active.wrap);
   btnWrap.setAttribute('aria-pressed', active.wrap);
+  btnInsert.disabled = !active.editing;
+  if (!active.editing) insertMenu.hidePopover();
 
   const label = active.editing ? 'Anteprima (Ctrl+E)' : 'Modifica (Ctrl+E)';
   btnEdit.title = label;
@@ -910,18 +927,61 @@ btnEdit.addEventListener('click', () => active.flip());
 btnSave.addEventListener('click', () => active.save());
 btnDiscard.addEventListener('click', () => active.discard());
 btnWrap.addEventListener('click', () => { if (active.loaded) active.setWrap(!active.wrap); });
+// Insert menu, for the source of the active column: opens on the right of its button
+const INSERTS = { 'page-break': '<!-- pagebreak -->' };
+insertMenu.addEventListener('beforetoggle', (e) => {
+  btnInsert.setAttribute('aria-expanded', e.newState === 'open');
+  btnInsert.classList.toggle('pressed', e.newState === 'open');
+  if (e.newState !== 'open') return;
+  const rect = btnInsert.getBoundingClientRect();
+  insertMenu.style.left = `${rect.right + 4}px`;
+  insertMenu.style.top = `${rect.top}px`;
+});
+insertMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('[data-insert]');
+  if (!item) return;
+  insertMenu.hidePopover();
+  if (active.editing) active.insertBlock(INSERTS[item.dataset.insert]);
+});
 btnBack.addEventListener('click', () => active.goBack());
 btnForward.addEventListener('click', () => active.goForward());
 btnZoomIn.addEventListener('click', () => zoomStep(1));
 btnZoomOut.addEventListener('click', () => zoomStep(-1));
 btnZoomReset.addEventListener('click', () => setZoom(100));
 
+// App theme (system, light, dark) and Markdown theme, each with a light and a dark variant.
+// Applied as data-scheme / data-md-theme on <html>; "system" follows the Windows setting
+const THEMES = ['system', 'light', 'dark'];
+const MD_THEMES = ['github', 'github-hc', 'solarized', 'academic'];
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
+let theme = 'system';
+
+function applyTheme(settings) {
+  theme = THEMES.includes(settings.theme) ? settings.theme : 'system';
+  const root = document.documentElement;
+  root.dataset.scheme = theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : theme;
+  root.dataset.mdTheme = MD_THEMES.includes(settings.mdTheme) ? settings.mdTheme : 'github';
+}
+
+systemDark.addEventListener('change', () => { if (theme === 'system') applyTheme({ theme, mdTheme: document.documentElement.dataset.mdTheme }); });
+// Another window may have changed the themes
+window.addEventListener('focus', async () => applyTheme(await loadSettings()));
+
 // Settings are shared by all windows: they are read again each time the panel opens
 btnSettings.addEventListener('click', async () => {
   const settings = await loadSettings();
   settingNewWindow.checked = !!settings.newWindowPerFile;
+  applyTheme(settings);
+  settingTheme.value = theme;
+  settingMdTheme.value = document.documentElement.dataset.mdTheme;
   settingsDialog.showModal();
 });
+for (const [select, key] of [[settingTheme, 'theme'], [settingMdTheme, 'mdTheme']]) {
+  select.addEventListener('change', () => {
+    applyTheme({ theme: settingTheme.value, mdTheme: settingMdTheme.value });
+    saveSetting(key, select.value);
+  });
+}
 settingZoom.addEventListener('change', () => setZoom(Number(settingZoom.value)));
 settingNewWindow.addEventListener('change', () => saveSetting('newWindowPerFile', settingNewWindow.checked));
 
@@ -998,12 +1058,14 @@ document.addEventListener('auxclick', (e) => e.preventDefault());
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => e.preventDefault());
 
+applyTheme({});
 addColumn();
 setZoom(100, false);
 
 // "Open with" / drag onto the exe: the path arrives as a command-line argument
 Neutralino.events.on('ready', async () => {
   const settings = await loadSettings();
+  applyTheme(settings);
   if (ZOOM_LEVELS.includes(settings.zoom)) setZoom(settings.zoom, false);
 
   const fileArg = NL_ARGS.slice(1).find((arg) => !arg.startsWith('--'));

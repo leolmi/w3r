@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" data-scheme="light" data-md-theme="github">
 <head>
   <meta charset="UTF-8">
   <title>w3r</title>
-  <link rel="stylesheet" href="/vendor/github-markdown-light.css">
+  <link rel="stylesheet" href="/vendor/github-markdown.css">
+  <link rel="stylesheet" href="/vendor/github-markdown-themes.css">
+  <link rel="stylesheet" href="/themes.css">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -30,6 +32,9 @@
     <button id="btn-discard" class="icon-btn" title="Annulla tutte le modifiche" aria-label="Annulla tutte le modifiche" disabled>
       <span class="icon" style="--icon: url(/icons/undo.svg)"></span>
     </button>
+    <button id="btn-insert" class="icon-btn" title="Inserisci" aria-label="Inserisci" aria-haspopup="menu" aria-expanded="false" popovertarget="insert-menu" disabled>
+      <span class="icon" style="--icon: url(/icons/add_box.svg)"></span>
+    </button>
     <button id="btn-print" class="icon-btn" title="Stampa (Ctrl+P)" aria-label="Stampa" disabled>
       <span class="icon" style="--icon: url(/icons/print.svg)"></span>
     </button>
@@ -50,9 +55,31 @@
       <span class="icon" style="--icon: url(/icons/settings.svg)"></span>
     </button>
   </nav>
+  <div id="insert-menu" class="menu" role="menu" aria-label="Inserisci" popover>
+    <button class="menu-item" role="menuitem" data-insert="page-break">
+      <span class="icon" style="--icon: url(/icons/page_break.svg)"></span>Salto pagina
+    </button>
+  </div>
   <dialog id="settings" aria-labelledby="settings-title">
     <form method="dialog">
       <h2 id="settings-title">Impostazioni</h2>
+      <label class="setting">
+        <span>Tema</span>
+        <select id="setting-theme">
+          <option value="system">Sistema</option>
+          <option value="light">Chiaro</option>
+          <option value="dark">Scuro</option>
+        </select>
+      </label>
+      <label class="setting">
+        <span>Tema dei documenti</span>
+        <select id="setting-md-theme">
+          <option value="github">GitHub</option>
+          <option value="github-hc">GitHub alto contrasto</option>
+          <option value="solarized">Solarized</option>
+          <option value="academic">Accademico</option>
+        </select>
+      </label>
       <label class="setting">
         <span>Zoom dei documenti</span>
         <select id="setting-zoom"></select>

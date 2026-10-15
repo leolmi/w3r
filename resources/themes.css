@@ -1,0 +1,98 @@
+/* Markdown themes beyond GitHub (vendor/github-markdown-themes.css): each one sets the GitHub color
+   variables for the light scheme and, on screen only, for the dark one (printing is always light).
+   Variables left out keep the GitHub values */
+
+/* Solarized (Ethan Schoonover): base3 / base03 pages, the same accent colors on both */
+:root[data-md-theme="solarized"] {
+  --bgColor-default: #fdf6e3;
+  --bgColor-muted: #eee8d5;
+  --bgColor-neutral-muted: #93a1a133;
+  --bgColor-attention-muted: #b5890026;
+  --fgColor-default: #586e75;
+  --fgColor-muted: #839496;
+  --fgColor-accent: #268bd2;
+  --fgColor-attention: #b58900;
+  --fgColor-danger: #dc322f;
+  --fgColor-done: #6c71c4;
+  --fgColor-success: #859900;
+  --borderColor-default: #e4dcc4;
+  --borderColor-muted: #e4dcc4b3;
+  --borderColor-accent-emphasis: #268bd2;
+  --borderColor-attention-emphasis: #b58900;
+  --borderColor-danger-emphasis: #dc322f;
+  --borderColor-done-emphasis: #6c71c4;
+  --borderColor-success-emphasis: #859900;
+  --color-prettylights-syntax-markup-bold: #073642;
+  --color-prettylights-syntax-markup-italic: #073642;
+}
+
+@media screen {
+  :root[data-md-theme="solarized"][data-scheme="dark"] {
+    --bgColor-default: #002b36;
+    --bgColor-muted: #073642;
+    --bgColor-neutral-muted: #586e7540;
+    --bgColor-attention-muted: #b5890033;
+    --fgColor-default: #93a1a1;
+    --fgColor-muted: #657b83;
+    --fgColor-accent: #2aa198;
+    --borderColor-default: #0d4a57;
+    --borderColor-muted: #0d4a57b3;
+    --borderColor-accent-emphasis: #268bd2;
+    --color-prettylights-syntax-markup-bold: #eee8d5;
+    --color-prettylights-syntax-markup-italic: #eee8d5;
+  }
+}
+
+/* Academic: serif type on paper; graphite in the dark */
+:root[data-md-theme="academic"] {
+  --bgColor-default: #fbfaf6;
+  --bgColor-muted: #f2efe6;
+  --bgColor-neutral-muted: #8a806a1f;
+  --bgColor-attention-muted: #f3e7b8;
+  --fgColor-default: #222222;
+  --fgColor-muted: #6b665c;
+  --fgColor-accent: #8b2a1d;
+  --fgColor-attention: #8a6200;
+  --borderColor-default: #ddd7c8;
+  --borderColor-muted: #ddd7c8b3;
+  --borderColor-accent-emphasis: #8b2a1d;
+  --color-prettylights-syntax-markup-bold: #111111;
+  --color-prettylights-syntax-markup-italic: #111111;
+}
+
+@media screen {
+  :root[data-md-theme="academic"][data-scheme="dark"] {
+    --bgColor-default: #1f2023;
+    --bgColor-muted: #2a2b2f;
+    --bgColor-neutral-muted: #a59f9133;
+    --bgColor-attention-muted: #6b520033;
+    --fgColor-default: #dcd8ce;
+    --fgColor-muted: #9b968b;
+    --fgColor-accent: #dd9a86;
+    --fgColor-attention: #d9b45a;
+    --borderColor-default: #3b3c40;
+    --borderColor-muted: #3b3c40b3;
+    --borderColor-accent-emphasis: #dd9a86;
+    --color-prettylights-syntax-markup-bold: #f2efe8;
+    --color-prettylights-syntax-markup-italic: #f2efe8;
+  }
+}
+
+:root[data-md-theme="academic"] .markdown-body {
+  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  line-height: 1.65;
+  hyphens: auto;
+  text-align: justify;
+}
+
+:root[data-md-theme="academic"] .markdown-body :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 600;
+  text-align: left;
+}
+
+:root[data-md-theme="academic"] .markdown-body h1 { font-size: 2em; text-align: center; }
+:root[data-md-theme="academic"] .markdown-body h2 { font-variant: small-caps; letter-spacing: 0.02em; }
+:root[data-md-theme="academic"] .markdown-body :is(pre, code, table, li) { text-align: left; }
+:root[data-md-theme="academic"] .markdown-body blockquote { font-style: italic; }
+:root[data-md-theme="academic"] .markdown-body a { text-decoration-thickness: 1px; }
