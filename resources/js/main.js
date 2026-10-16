@@ -28,6 +28,8 @@ const settingZoom = document.getElementById('setting-zoom');
 const settingNewWindow = document.getElementById('setting-new-window');
 const settingTheme = document.getElementById('setting-theme');
 const settingMdTheme = document.getElementById('setting-md-theme');
+const settingPageWidth = document.getElementById('setting-page-width');
+const settingPageWidthCustom = document.getElementById('setting-page-width-custom');
 
 const MD_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd'];
 
@@ -99,6 +101,7 @@ class Column {
         </button>
         <button class="column-close" title="Chiudi colonna" aria-label="Chiudi colonna">×</button>
       </header>
+      <button class="column-close-overlay" title="Chiudi documento" aria-label="Chiudi documento">×</button>
       <div class="column-scroller">
         <div class="sheet">
           <article class="markdown-body">
@@ -126,6 +129,7 @@ class Column {
     this.content.addEventListener('click', (e) => { if (e.target.closest('.placeholder')) openDialog(); });
     this.content.addEventListener('auxclick', (e) => { if (e.button === 1) this.onLinkClick(e); });
     this.el.querySelector('.column-close').addEventListener('click', () => closeColumn(this));
+    this.el.querySelector('.column-close-overlay').addEventListener('click', () => closeColumn(this));
     this.el.querySelector('.column-detach').addEventListener('click', () => detachColumn(this));
     this.el.querySelector('.column-header').addEventListener('pointerdown', (e) => startColumnDrag(this, e));
 
@@ -512,14 +516,19 @@ async function detachColumn(column) {
   closeColumn(column);
 }
 
-// The last column cannot be closed
+// The last column is replaced by an empty one, unless it is already empty
 async function closeColumn(column) {
-  if (columns.length < 2 || !(await column.confirmLeave())) return;
+  const last = columns.length < 2;
+  if ((last && !column.loaded) || !(await column.confirmLeave())) return;
   const index = columns.indexOf(column);
   columns.splice(index, 1);
   column.el.remove();
   if (column.mountPoint) Neutralino.server.unmount(column.mountPoint).catch(() => {});
-  if (active === column) {
+  if (last) {
+    active = null;
+    addColumn();
+    Neutralino.window.setTitle('w3r');
+  } else if (active === column) {
     active = null;
     activate(columns[Math.min(index, columns.length - 1)]);
   } else updateUI();
@@ -949,6 +958,32 @@ btnZoomIn.addEventListener('click', () => zoomStep(1));
 btnZoomOut.addEventListener('click', () => zoomStep(-1));
 btnZoomReset.addEventListener('click', () => setZoom(100));
 
+// Page width, the same for all columns: a preset or a custom width in pixels, within limits
+const PAGE_WIDTHS = { narrow: 720, medium: 900, large: 1200 };
+const PAGE_WIDTH_MIN = 480;
+const PAGE_WIDTH_MAX = 2400;
+let pageWidth = { preset: 'medium', custom: PAGE_WIDTHS.medium };
+
+settingPageWidthCustom.min = PAGE_WIDTH_MIN;
+settingPageWidthCustom.max = PAGE_WIDTH_MAX;
+
+function applyPageWidth(settings) {
+  const saved = settings.pageWidth || {};
+  const custom = Number(saved.custom);
+  pageWidth = {
+    preset: saved.preset in PAGE_WIDTHS || saved.preset === 'custom' ? saved.preset : 'medium',
+    custom: custom >= PAGE_WIDTH_MIN && custom <= PAGE_WIDTH_MAX ? custom : PAGE_WIDTHS.medium
+  };
+  const width = pageWidth.preset === 'custom' ? pageWidth.custom : PAGE_WIDTHS[pageWidth.preset];
+  document.documentElement.style.setProperty('--sheet-width', `${width}px`);
+}
+
+function showPageWidth() {
+  settingPageWidth.value = pageWidth.preset;
+  settingPageWidthCustom.value = pageWidth.custom;
+  settingPageWidthCustom.hidden = pageWidth.preset !== 'custom';
+}
+
 // App theme (system, light, dark) and Markdown theme, each with a light and a dark variant.
 // Applied as data-scheme / data-md-theme on <html>; "system" follows the Windows setting
 const THEMES = ['system', 'light', 'dark'];
@@ -965,7 +1000,11 @@ function applyTheme(settings) {
 
 systemDark.addEventListener('change', () => { if (theme === 'system') applyTheme({ theme, mdTheme: document.documentElement.dataset.mdTheme }); });
 // Another window may have changed the themes
-window.addEventListener('focus', async () => applyTheme(await loadSettings()));
+window.addEventListener('focus', async () => {
+  const settings = await loadSettings();
+  applyTheme(settings);
+  applyPageWidth(settings);
+});
 
 // Settings are shared by all windows: they are read again each time the panel opens
 btnSettings.addEventListener('click', async () => {
@@ -974,6 +1013,8 @@ btnSettings.addEventListener('click', async () => {
   applyTheme(settings);
   settingTheme.value = theme;
   settingMdTheme.value = document.documentElement.dataset.mdTheme;
+  applyPageWidth(settings);
+  showPageWidth();
   settingsDialog.showModal();
 });
 for (const [select, key] of [[settingTheme, 'theme'], [settingMdTheme, 'mdTheme']]) {
@@ -982,6 +1023,23 @@ for (const [select, key] of [[settingTheme, 'theme'], [settingMdTheme, 'mdTheme'
     saveSetting(key, select.value);
   });
 }
+settingPageWidth.addEventListener('change', () => {
+  // A preset chosen as the custom starting point keeps the width of the previous one
+  if (settingPageWidth.value === 'custom' && pageWidth.preset !== 'custom') pageWidth.custom = PAGE_WIDTHS[pageWidth.preset];
+  pageWidth.preset = settingPageWidth.value;
+  applyPageWidth({ pageWidth });
+  showPageWidth();
+  saveSetting('pageWidth', pageWidth);
+});
+// Out-of-range values are clamped once the field is left
+settingPageWidthCustom.addEventListener('change', () => {
+  const value = Math.round(Number(settingPageWidthCustom.value));
+  if (!Number.isFinite(value) || settingPageWidthCustom.value === '') { showPageWidth(); return; }
+  pageWidth.custom = Math.min(PAGE_WIDTH_MAX, Math.max(PAGE_WIDTH_MIN, value));
+  applyPageWidth({ pageWidth });
+  showPageWidth();
+  saveSetting('pageWidth', pageWidth);
+});
 settingZoom.addEventListener('change', () => setZoom(Number(settingZoom.value)));
 settingNewWindow.addEventListener('change', () => saveSetting('newWindowPerFile', settingNewWindow.checked));
 
@@ -1066,6 +1124,7 @@ setZoom(100, false);
 Neutralino.events.on('ready', async () => {
   const settings = await loadSettings();
   applyTheme(settings);
+  applyPageWidth(settings);
   if (ZOOM_LEVELS.includes(settings.zoom)) setZoom(settings.zoom, false);
 
   const fileArg = NL_ARGS.slice(1).find((arg) => !arg.startsWith('--'));

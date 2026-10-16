@@ -84,6 +84,18 @@
         <span>Zoom dei documenti</span>
         <select id="setting-zoom"></select>
       </label>
+      <div class="setting">
+        <label for="setting-page-width">Larghezza pagina</label>
+        <span class="setting-controls">
+          <input type="number" id="setting-page-width-custom" step="10" aria-label="Larghezza personalizzata in pixel" hidden>
+          <select id="setting-page-width">
+            <option value="narrow">Stretta</option>
+            <option value="medium">Media</option>
+            <option value="large">Larga</option>
+            <option value="custom">Personalizzata</option>
+          </select>
+        </span>
+      </div>
       <label class="setting checkbox">
         <input type="checkbox" id="setting-new-window">
         <span>Apri ogni file da Esplora risorse in una nuova finestra<br>

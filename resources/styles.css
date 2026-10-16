@@ -239,6 +239,33 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 
 .column-close:hover { background: var(--hover); }
 
+/* With a single document, closing it is a button over the top-right corner of the document area */
+.column-close-overlay {
+  display: none;
+  position: absolute;
+  top: 8px;
+  right: calc(var(--scrollbar-width) + 8px);
+  z-index: 5;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 20px;
+  line-height: 1;
+  box-shadow: 0 2px 6px var(--shadow);
+  opacity: 0.35;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+
+#columns:not(.multi) .column:not(.empty) .column-close-overlay { display: flex; }
+.column-close-overlay:hover, .column-close-overlay:focus-visible { opacity: 1; }
+
 .column.dragging { outline: 3px dashed var(--accent); outline-offset: -12px; }
 
 /* Drop near an edge: the new column will appear on that side */
@@ -360,7 +387,11 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 .setting.checkbox { justify-content: flex-start; align-items: flex-start; }
 .setting.checkbox input { margin: 3px 0 0; }
 .setting small { color: var(--fg-muted); font-size: 12px; }
-.setting select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+.setting select, .setting input[type=number] { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+.setting-controls { display: flex; align-items: center; gap: 8px; }
+.setting input[type=number] { width: 90px; }
+.setting input[type=number][hidden] { display: none; }
+.setting input[type=number]:invalid { border-color: var(--warn); }
 
 .settings-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
 
@@ -513,7 +544,7 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   #columns-area { display: block; }
   #columns, .column, .column-scroller { display: block; overflow: visible; padding: 0; min-width: 0; border: none; }
   .column + .column { border-left: none; }
-  .column-header { display: none !important; }
+  .column-header, .column-close-overlay { display: none !important; }
   .column:not(.active) { display: none; }
 
   .sheet {
