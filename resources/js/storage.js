@@ -40,6 +40,20 @@ async function saveSetting(key, value) {
   await Neutralino.filesystem.writeFile(path, JSON.stringify(settings, null, 2)).catch(() => {});
 }
 
+// Reading points by file path, shared by all windows: { block, fraction, text } (see Column.readingPoint)
+async function loadBookmarks() {
+  return (await readJson(`${await getAppDataDir()}\\bookmarks.json`)) || {};
+}
+
+// Read again before writing, so the reading points set in other windows are kept; null removes one
+async function saveBookmark(path, bookmark) {
+  const file = `${await getAppDataDir()}\\bookmarks.json`;
+  const bookmarks = (await readJson(file)) || {};
+  if (bookmark) bookmarks[path] = bookmark;
+  else delete bookmarks[path];
+  await Neutralino.filesystem.writeFile(file, JSON.stringify(bookmarks, null, 2)).catch(() => {});
+}
+
 // Each instance owns one file (no write conflicts) with its window position, a heartbeat timestamp
 // and the time its window was last selected (a new window counts as selected)
 let focusedAt = Date.now();

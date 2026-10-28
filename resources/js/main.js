@@ -3,6 +3,7 @@ Neutralino.init();
 const columnsEl = document.getElementById('columns');
 const btnOpen = document.getElementById('btn-open');
 const btnPrint = document.getElementById('btn-print');
+const btnBookmark = document.getElementById('btn-bookmark');
 const btnBack = document.getElementById('btn-back');
 const btnForward = document.getElementById('btn-forward');
 const btnZoomIn = document.getElementById('btn-zoom-in');
@@ -20,6 +21,8 @@ const fileListItems = document.getElementById('file-list-items');
 const btnOpenColumn = document.getElementById('btn-open-column');
 const btnCloseAll = document.getElementById('btn-close-all');
 const fileListCount = document.getElementById('file-list-count');
+const bookmarkList = document.getElementById('bookmark-list');
+const bookmarkListItems = document.getElementById('bookmark-list-items');
 const btnScrollLeft = document.getElementById('btn-scroll-left');
 const btnScrollRight = document.getElementById('btn-scroll-right');
 const btnSettings = document.getElementById('btn-settings');
@@ -108,6 +111,7 @@ class Column {
             <p class="placeholder">Apri un file .md oppure trascinalo qui.</p>
           </article>
           <textarea class="editor" wrap="off" spellcheck="false" aria-label="Testo Markdown"></textarea>
+          <button class="bookmark" title="Trascina per spostare il punto di lettura, clic per toglierlo" aria-label="Togli il punto di lettura" hidden></button>
         </div>
       </div>`;
     this.title = this.el.querySelector('.column-title');
@@ -115,6 +119,10 @@ class Column {
     this.sheet = this.el.querySelector('.sheet');
     this.content = this.el.querySelector('.markdown-body');
     this.editor = this.el.querySelector('.editor');
+    this.mark = this.el.querySelector('.bookmark');
+    // Set when the document opens at its reading point: the point is kept in view while images load,
+    // until the user scrolls
+    this.followMark = false;
     this.bindEvents();
   }
 
@@ -132,6 +140,20 @@ class Column {
     this.el.querySelector('.column-close-overlay').addEventListener('click', () => closeColumn(this));
     this.el.querySelector('.column-detach').addEventListener('click', () => detachColumn(this));
     this.el.querySelector('.column-header').addEventListener('pointerdown', (e) => startColumnDrag(this, e));
+    // A click removes the reading point, unless it ends a drag of the tab
+    this.mark.addEventListener('pointerdown', (e) => startMarkDrag(this, e));
+    this.mark.addEventListener('click', () => {
+      if (!this.markDragged) removeBookmark(this.path);
+      this.markDragged = false;
+    });
+    for (const type of ['wheel', 'pointerdown', 'keydown']) {
+      this.el.addEventListener(type, () => { this.followMark = false; }, { passive: true });
+    }
+    // Zoom, page width, wrapping and loading images move the reading point
+    new ResizeObserver(() => {
+      this.placeMark();
+      if (this.followMark) this.scrollToMark();
+    }).observe(this.content);
 
     this.editor.addEventListener('input', () => { this.fitEditor(); updateUI(); });
     // Tab inserts a tab character instead of moving the focus (execCommand keeps the undo history)
@@ -227,6 +249,42 @@ class Column {
     this.content.replaceChildren(fragment);
     this.addHeadingIds();
     this.renderedText = markdown;
+    this.placeMark();
+  }
+
+  // The reading point is the first line in view (or the given height in the window): the top-level block
+  // it falls in, how far into it, and the start of the block's text, to find the block again if the
+  // document has changed
+  readingPoint(top = this.scroller.getBoundingClientRect().top) {
+    const blocks = [...this.content.children];
+    const index = blocks.findIndex((block) => block.getBoundingClientRect().bottom > top);
+    if (index < 0) return null;
+    const rect = blocks[index].getBoundingClientRect();
+    const fraction = rect.height ? Math.min(1, Math.max(0, (top - rect.top) / rect.height)) : 0;
+    return { block: index, fraction, text: blocks[index].textContent.trim().slice(0, 80) };
+  }
+
+  findBlock(bookmark) {
+    const blocks = [...this.content.children];
+    const sameText = (block) => block.textContent.trim().slice(0, 80) === bookmark.text;
+    const block = blocks[bookmark.block];
+    if (block && sameText(block)) return block;
+    return blocks.find(sameText) || blocks[Math.min(bookmark.block, blocks.length - 1)];
+  }
+
+  // The tab hangs from the reading point, on the right margin of the rendered document
+  placeMark() {
+    const bookmark = this.path && bookmarks[this.path];
+    const block = bookmark && this.loaded && !this.editing && this.findBlock(bookmark);
+    this.mark.hidden = !block;
+    if (block) this.mark.style.top = `${block.offsetTop + bookmark.fraction * block.offsetHeight}px`;
+  }
+
+  // Returns false if the document has no reading point
+  scrollToMark() {
+    if (this.mark.hidden) return false;
+    this.scroller.scrollTop += this.mark.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top;
+    return true;
   }
 
   async render(text, name, path, dropped = null) {
@@ -245,6 +303,7 @@ class Column {
     this.renderMarkdown(this.savedText);
     this.setEditing(false);
     this.loaded = true;
+    this.placeMark();
     if (path) addVisited(path);
     updateUI();
     saveState();
@@ -285,6 +344,7 @@ class Column {
     this.sheet.classList.toggle('editing', value);
     if (value) this.fitEditor();
     else if (this.renderedText !== this.editor.value) this.renderMarkdown(this.editor.value);
+    this.placeMark();
   }
 
   // The sheet turns on itself: half turn, swap of the face, half turn back; the scroll position is kept in proportion
@@ -366,12 +426,13 @@ class Column {
     else this.scroller.scrollTo(0, 0);
   }
 
-  // Loads a file; returns false if it cannot be read
+  // Loads a file, at the anchor or else at its reading point; returns false if it cannot be read
   async loadPath(path, anchor) {
     try {
       const text = await Neutralino.filesystem.readFile(path);
       await this.render(text, fileName(path), path);
-      this.scrollToAnchor(anchor);
+      this.followMark = !anchor && this.scrollToMark();
+      if (!this.followMark) this.scrollToAnchor(anchor);
       return true;
     } catch (err) {
       Neutralino.os.showMessageBox('Errore', `Impossibile aprire il file:\n${path}`, 'OK', 'ERROR');
@@ -605,23 +666,132 @@ function startColumnDrag(column, e) {
   window.addEventListener('blur', onUp);
 }
 
-// Closes every column (asking to save unsaved changes) and empties the file list: back to the startup state
+// Reading points by file path, as saved in storage; read at startup and each time the window is selected
+let bookmarks = {};
+
+function hasBookmark(entry) {
+  return !isDropped(entry) && !!bookmarks[entry];
+}
+
+// The documents with a reading point are always in the file list
+function addBookmarked() {
+  for (const path of Object.keys(bookmarks)) addVisited(path);
+}
+
+async function reloadBookmarks() {
+  bookmarks = await loadBookmarks();
+  addBookmarked();
+  for (const column of columns) column.placeMark();
+  updateUI();
+  saveState();
+}
+
+// Only for a document on disk, shown rendered: a new reading point replaces the previous one.
+// At the first line in view, or at the given height in the window
+function setBookmark(column, top) {
+  if (!column.loaded || !column.path || column.editing) return;
+  const point = column.readingPoint(top);
+  if (!point) return;
+  bookmarks[column.path] = point;
+  column.placeMark();
+  updateUI();
+  saveBookmark(column.path, point);
+}
+
+// The top of the line of text at that height, if there is one: lines are found at the left edge of the text
+function lineTop(column, y) {
+  const content = column.content.getBoundingClientRect();
+  const padding = parseFloat(getComputedStyle(column.content).paddingLeft) * content.width / column.content.offsetWidth;
+  const rect = document.caretRangeFromPoint(content.left + padding + 1, y)?.getBoundingClientRect();
+  return rect?.height && Math.abs(rect.top + rect.height / 2 - y) < rect.height ? rect.top : y;
+}
+
+// Dragging the tab moves the reading point up or down, onto the lines of the text;
+// near the top and bottom of the column the document scrolls
+function startMarkDrag(column, e) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const startY = e.clientY;
+  let lastY = startY;
+  let dropY = null;
+  let dragging = false;
+  let edgeTimer = null;
+
+  const follow = () => {
+    dropY = lineTop(column, lastY);
+    const sheet = column.sheet.getBoundingClientRect();
+    // From window pixels to the pixels of the zoomed sheet
+    const scale = sheet.height / column.sheet.offsetHeight;
+    column.mark.style.top = `${(dropY - sheet.top) / scale}px`;
+  };
+
+  const edgeScroll = () => {
+    const view = column.scroller.getBoundingClientRect();
+    if (lastY < view.top + EDGE_SCROLL_ZONE) column.scroller.scrollTop -= 20;
+    else if (lastY > view.bottom - EDGE_SCROLL_ZONE) column.scroller.scrollTop += 20;
+    else return;
+    follow();
+  };
+
+  const onMove = (ev) => {
+    lastY = ev.clientY;
+    if (!dragging) {
+      if (Math.abs(lastY - startY) < DRAG_THRESHOLD) return;
+      dragging = true;
+      document.body.classList.add('mark-dragging');
+      edgeTimer = setInterval(edgeScroll, 30);
+    }
+    follow();
+  };
+
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('blur', onUp);
+    clearInterval(edgeTimer);
+    document.body.classList.remove('mark-dragging');
+    column.markDragged = dragging;
+    if (dragging) setBookmark(column, dropY);
+  };
+
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  window.addEventListener('blur', onUp);
+}
+
+function removeBookmark(path) {
+  if (!bookmarks[path]) return;
+  delete bookmarks[path];
+  for (const column of columns) column.placeMark();
+  updateUI();
+  saveBookmark(path, null);
+}
+
+// Closes the columns of the documents without a reading point (asking to save unsaved changes) and empties
+// their list; the documents with a reading point stay open and listed
 async function closeAll() {
   const choice = await Neutralino.os.showMessageBox('Chiudi tutto',
-    'Chiudere tutti i documenti e svuotare l\'elenco?', 'OK_CANCEL', 'QUESTION');
+    'Chiudere i documenti senza punto di lettura e svuotare il loro elenco?', 'OK_CANCEL', 'QUESTION');
   if (choice !== 'OK') return;
-  for (const column of columns) {
+  const closing = columns.filter((column) => !(column.path && bookmarks[column.path]));
+  for (const column of closing) {
     if (!(await column.confirmLeave())) return;
   }
-  for (const column of columns) {
+  for (const column of closing) {
+    columns.splice(columns.indexOf(column), 1);
     column.el.remove();
     if (column.mountPoint) Neutralino.server.unmount(column.mountPoint).catch(() => {});
   }
-  columns.length = 0;
   visited.length = 0;
-  active = null;
-  addColumn();
-  Neutralino.window.setTitle('w3r');
+  addBookmarked();
+  if (!columns.includes(active)) active = null;
+  if (!columns.length) {
+    addColumn();
+    Neutralino.window.setTitle('w3r');
+  } else if (!active) activate(columns[0]);
+  else updateUI();
   saveState();
 }
 
@@ -663,6 +833,7 @@ function updateUI() {
   btnBack.disabled = !active.back.length;
   btnForward.disabled = !active.forward.length;
   btnPrint.disabled = !active.loaded;
+  btnBookmark.disabled = !active.loaded || !active.path || active.editing;
   btnEdit.disabled = !active.loaded;
   const dirty = active.isDirty();
   btnSave.disabled = !dirty;
@@ -691,9 +862,11 @@ function updateUI() {
     column.el.classList.toggle('empty', !column.loaded);
     column.el.classList.toggle('on-disk', !!column.path);
   }
-  // The file list is useful only with at least two files
-  fileList.hidden = visited.length < 2 && !visited.some(isDropped);
-  fileListCount.textContent = `${visited.length} documenti`;
+  // The file list is useful only with at least two files, or with a reading point to go back to
+  const unmarked = visited.filter((entry) => !hasBookmark(entry));
+  fileList.hidden = visited.length < 2 && !visited.some(isDropped) && !visited.some(hasBookmark);
+  fileListCount.textContent = `${unmarked.length} documenti`;
+  btnCloseAll.disabled = !unmarked.length;
   renderFileList();
   updateScrollButtons();
 }
@@ -762,70 +935,85 @@ function openEntry(entry, newColumn) {
   else active.openDropped(entry.file);
 }
 
+// The documents with a reading point have a list of their own, at the bottom, by name
 function renderFileList() {
-  fileListItems.replaceChildren(...visited.map((entry) => {
-    const openIn = columnsShowing(entry);
-    const item = document.createElement('li');
-    item.className = openIn.length ? 'open' : '';
-    item.classList.toggle('dirty', openIn.some((c) => c.isDirty()));
-    item.classList.toggle('active', openIn.includes(active));
-    item.title = isDropped(entry) ? `${entry.key.slice(1)} (cartella trascinata, percorso non noto)` : entry;
+  fileListItems.replaceChildren(...visited.filter((entry) => !hasBookmark(entry)).map(fileItem));
+  const marked = Object.keys(bookmarks).sort((a, b) => fileName(a).localeCompare(fileName(b)));
+  bookmarkList.hidden = !marked.length;
+  bookmarkListItems.replaceChildren(...marked.map(fileItem));
+}
 
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = `${openIn.some((c) => c.isDirty()) ? '● ' : ''}${isDropped(entry) ? entry.file.name : fileName(entry)}`;
-    const label = document.createElement('span');
-    label.className = 'label';
-    label.append(name);
+function fileItem(entry) {
+  const openIn = columnsShowing(entry);
+  const item = document.createElement('li');
+  item.className = openIn.length ? 'open' : '';
+  item.classList.toggle('dirty', openIn.some((c) => c.isDirty()));
+  item.classList.toggle('active', openIn.includes(active));
+  item.title = isDropped(entry) ? `${entry.key.slice(1)} (cartella trascinata, percorso non noto)` : entry;
 
-    // Folder under the name, to tell apart files with the same name; the full path is in the tooltip
-    const folder = isDropped(entry)
-      ? entry.key.slice(1).split('/').slice(0, -1).join('/')
-      : entry.split('\\').slice(0, -1).join('\\');
-    if (folder) {
-      const path = document.createElement('span');
-      path.className = 'path';
-      // Marks keep the path left to right inside the rtl box that cuts it on the left
-      path.textContent = `‎${folder}‎`;
-      label.append(path);
-    }
-    item.append(label);
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = `${openIn.some((c) => c.isDirty()) ? '● ' : ''}${isDropped(entry) ? entry.file.name : fileName(entry)}`;
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.append(name);
 
-    for (const column of openIn) {
-      const number = columns.indexOf(column) + 1;
-      const badge = document.createElement('span');
-      badge.className = column === active ? 'badge active' : 'badge';
-      badge.textContent = number;
-      badge.title = `Aperto nella colonna ${number}`;
-      item.append(badge);
-    }
+  // Folder under the name, to tell apart files with the same name; the full path is in the tooltip
+  const folder = isDropped(entry)
+    ? entry.key.slice(1).split('/').slice(0, -1).join('/')
+    : entry.split('\\').slice(0, -1).join('\\');
+  if (folder) {
+    const path = document.createElement('span');
+    path.className = 'path';
+    // Marks keep the path left to right inside the rtl box that cuts it on the left
+    path.textContent = `‎${folder}‎`;
+    label.append(path);
+  }
+  item.append(label);
 
-    if (!openIn.length) {
-      const remove = document.createElement('button');
-      remove.className = 'remove';
-      remove.textContent = '×';
-      remove.title = 'Togli dall\'elenco';
-      remove.addEventListener('click', (e) => {
-        e.stopPropagation();
-        visited.splice(visited.indexOf(entry), 1);
-        updateUI();
-        saveState();
-      });
-      item.append(remove);
-    }
+  for (const column of openIn) {
+    const number = columns.indexOf(column) + 1;
+    const badge = document.createElement('span');
+    badge.className = column === active ? 'badge active' : 'badge';
+    badge.textContent = number;
+    badge.title = `Aperto nella colonna ${number}`;
+    item.append(badge);
+  }
 
-    // An open file: its column is brought into view; otherwise the file opens in the active column
-    // Ctrl+click and middle click open the file in a new column
-    item.addEventListener('auxclick', (e) => { if (e.button === 1) openEntry(entry, true); });
-    item.addEventListener('click', (e) => {
-      if (e.ctrlKey) { openEntry(entry, true); return; }
-      const target = openIn.includes(active) ? active : openIn[0];
-      if (!target) { openEntry(entry, false); return; }
-      revealColumn(target);
-      activate(target);
+  // A reading point can be removed also while the document is open: the document goes back to the
+  // list above, or leaves the list if it is not open
+  const marked = hasBookmark(entry);
+  if (marked || !openIn.length) {
+    const remove = document.createElement('button');
+    remove.className = 'remove';
+    remove.textContent = '×';
+    remove.title = marked ? 'Togli il punto di lettura' : 'Togli dall\'elenco';
+    remove.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (marked) {
+        const choice = await Neutralino.os.showMessageBox('Punto di lettura',
+          `Togliere il punto di lettura di ${fileName(entry)}?`, 'OK_CANCEL', 'QUESTION');
+        if (choice !== 'OK') return;
+        removeBookmark(entry);
+      }
+      if (!openIn.length) visited.splice(visited.indexOf(entry), 1);
+      updateUI();
+      saveState();
     });
-    return item;
-  }));
+    item.append(remove);
+  }
+
+  // An open file: its column is brought into view; otherwise the file opens in the active column
+  // Ctrl+click and middle click open the file in a new column
+  item.addEventListener('auxclick', (e) => { if (e.button === 1) openEntry(entry, true); });
+  item.addEventListener('click', (e) => {
+    if (e.ctrlKey) { openEntry(entry, true); return; }
+    const target = openIn.includes(active) ? active : openIn[0];
+    if (!target) { openEntry(entry, false); return; }
+    revealColumn(target);
+    activate(target);
+  });
+  return item;
 }
 
 // The state survives a page reload, so the app never falls back to an empty page
@@ -843,7 +1031,7 @@ async function restoreState() {
   let state = null;
   try { state = JSON.parse(sessionStorage.getItem('w3r-state')); } catch (err) { /* nothing to restore */ }
   if (!state || !Array.isArray(state.columns)) return;
-  visited.push(...(state.visited || []));
+  for (const path of state.visited || []) addVisited(path);
   state.columns.forEach((saved, index) => {
     const column = index ? addColumn() : columns[0];
     column.back.push(...saved.back);
@@ -911,27 +1099,62 @@ function printDocument() {
   window.print();
 }
 
-// The printed text keeps the on-screen width and is scaled down to the printable width of the page;
-// set on beforeprint, so it applies to Ctrl+P from the webview as well
+// The printed text keeps the width it has on screen (the page width, or less in a narrow window) and is
+// scaled down to the printable width of the paper; set on beforeprint, so it applies to Ctrl+P from the
+// webview as well
 function printZoom() {
   const probe = document.createElement('div');
   probe.style.cssText = 'position: absolute; visibility: hidden; width: var(--print-page-width)';
   document.body.append(probe);
   const pageWidth = probe.offsetWidth;
-  probe.style.width = 'var(--print-text-width)';
-  const textWidth = probe.offsetWidth;
+  probe.style.width = 'var(--sheet-padding-x)';
+  const textWidth = active.sheet.clientWidth - 2 * probe.offsetWidth;
   probe.remove();
   return Math.min(1, pageWidth / textWidth);
 }
 
+// Tables and code blocks wider than the text scroll sideways on screen; in print each one is scaled down
+// to the width of the text instead, so nothing is cut off. Measured on the rendered document, which is
+// shown for the measure even while editing (the print shows it anyway)
+let printScaled = [];
+
+function unscaleWideBlocks() {
+  for (const block of printScaled) block.style.zoom = '';
+  printScaled = [];
+}
+
+function scaleWideBlocks() {
+  unscaleWideBlocks();
+  const content = active.content;
+  content.style.display = 'block';
+  for (const block of content.querySelectorAll('table, pre')) {
+    if (printScaled.some((scaled) => scaled.contains(block))) continue;
+    if (block.scrollWidth > block.clientWidth) {
+      // The zoomed layout rounds on its own (differently in print): shrunk a little more, and again
+      // until nothing sticks out
+      let scale = block.clientWidth / block.scrollWidth * 0.99;
+      do {
+        block.style.zoom = scale;
+        scale *= 0.995;
+      } while (block.scrollWidth > block.clientWidth && scale > 0.1);
+      printScaled.push(block);
+    }
+  }
+  content.style.display = '';
+}
+
 window.addEventListener('beforeprint', () => {
   document.documentElement.style.setProperty('--print-zoom', printZoom());
+  scaleWideBlocks();
 });
+
+window.addEventListener('afterprint', unscaleWideBlocks);
 
 btnOpen.addEventListener('click', () => openDialog());
 btnOpenColumn.addEventListener('click', () => openDialog(true));
 btnCloseAll.addEventListener('click', closeAll);
 btnPrint.addEventListener('click', printDocument);
+btnBookmark.addEventListener('click', () => setBookmark(active));
 btnEdit.addEventListener('click', () => active.flip());
 btnSave.addEventListener('click', () => active.save());
 btnDiscard.addEventListener('click', () => active.discard());
@@ -999,11 +1222,12 @@ function applyTheme(settings) {
 }
 
 systemDark.addEventListener('change', () => { if (theme === 'system') applyTheme({ theme, mdTheme: document.documentElement.dataset.mdTheme }); });
-// Another window may have changed the themes
+// Another window may have changed the themes or the reading points
 window.addEventListener('focus', async () => {
   const settings = await loadSettings();
   applyTheme(settings);
   applyPageWidth(settings);
+  reloadBookmarks();
 });
 
 // Settings are shared by all windows: they are read again each time the panel opens
@@ -1094,6 +1318,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key.toLowerCase() === 'o') { e.preventDefault(); openDialog(e.shiftKey); }
   if (e.key === 'p') { e.preventDefault(); printDocument(); }
+  if (e.key === 'b') { e.preventDefault(); setBookmark(active); }
   if (e.key === 'e') { e.preventDefault(); active.flip(); }
   if (e.key === 's') { e.preventDefault(); active.save(); }
   if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomStep(1); }
@@ -1151,8 +1376,11 @@ Neutralino.events.on('ready', async () => {
     bringToFront();
   });
 
+  bookmarks = await loadBookmarks();
   if (fullPath) active.navigateTo(fullPath);
   else restoreState();
+  addBookmarked();
+  updateUI();
 });
 
 Neutralino.events.on('windowClose', async () => {

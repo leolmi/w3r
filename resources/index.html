@@ -38,6 +38,9 @@
     <button id="btn-print" class="icon-btn" title="Stampa (Ctrl+P)" aria-label="Stampa" disabled>
       <span class="icon" style="--icon: url(/icons/print.svg)"></span>
     </button>
+    <button id="btn-bookmark" class="icon-btn" title="Metti qui il punto di lettura (Ctrl+B)" aria-label="Metti qui il punto di lettura" disabled>
+      <span class="icon" style="--icon: url(/icons/bookmark.svg)"></span>
+    </button>
     <hr>
     <button id="btn-wrap" class="icon-btn" title="A capo automatico (Alt+Z)" aria-label="A capo automatico" aria-pressed="false" disabled>
       <span class="icon" style="--icon: url(/icons/wrap_text.svg)"></span>
@@ -117,11 +120,17 @@
   <aside id="file-list" aria-label="File visti" hidden>
     <header class="file-list-header">
       <span id="file-list-count"></span>
-      <button id="btn-close-all" class="icon-btn small" title="Chiudi tutti i documenti e svuota l'elenco" aria-label="Chiudi tutti i documenti">
+      <button id="btn-close-all" class="icon-btn small" title="Chiudi i documenti senza punto di lettura e svuota l'elenco" aria-label="Chiudi i documenti senza punto di lettura">
         <span class="icon" style="--icon: url(/icons/playlist_remove.svg)"></span>
       </button>
     </header>
-    <ul id="file-list-items"></ul>
+    <ul id="file-list-items" class="file-items"></ul>
+    <section id="bookmark-list" aria-label="Punti di lettura" hidden>
+      <header class="file-list-header">
+        <span class="title"><span class="mark"></span>Punti di lettura</span>
+      </header>
+      <ul id="bookmark-list-items" class="file-items"></ul>
+    </section>
   </aside>
 
   <script src="/js/neutralino.js"></script>
