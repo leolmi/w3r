@@ -967,6 +967,17 @@ function fileItem(entry) {
     path.className = 'path';
     // Marks keep the path left to right inside the rtl box that cuts it on the left
     path.textContent = `‎${folder}‎`;
+    // A click copies the full path of the file; a dropped file has none
+    if (!isDropped(entry)) {
+      path.classList.add('copyable');
+      path.title = 'Clic per copiare il percorso';
+      path.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await Neutralino.clipboard.writeText(entry);
+        path.textContent = 'Percorso copiato';
+        setTimeout(() => { path.textContent = `‎${folder}‎`; }, 1200);
+      });
+    }
     label.append(path);
   }
   item.append(label);

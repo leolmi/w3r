@@ -494,6 +494,9 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   font-weight: normal;
 }
 
+.file-items .path.copyable { cursor: copy; }
+.file-items .path.copyable:hover { color: var(--accent); text-decoration: underline; }
+
 .file-items .badge {
   min-width: 18px;
   padding: 0 5px;
