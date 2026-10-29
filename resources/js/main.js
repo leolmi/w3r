@@ -1057,7 +1057,7 @@ function fileItem(entry) {
     // A click opens the menu of the path (copy, open in Explorer); a dropped file has none
     if (!isDropped(entry)) {
       path.classList.add('actionable');
-      path.title = 'Clic per le azioni sul percorso';
+      path.title = folder;
       path.addEventListener('click', (e) => {
         e.stopPropagation();
         openPathMenu(path, entry, folder);
