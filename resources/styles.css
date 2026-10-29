@@ -445,6 +445,8 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   border-left: 1px solid var(--border);
 }
 
+#file-list.dragging { outline: 3px dashed var(--accent); outline-offset: -6px; }
+
 .file-list-header {
   display: flex;
   align-items: center;
@@ -498,8 +500,8 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   font-weight: normal;
 }
 
-.file-items .path.copyable { cursor: copy; }
-.file-items .path.copyable:hover { color: var(--accent); text-decoration: underline; }
+.file-items .path.actionable { cursor: pointer; }
+.file-items .path.actionable:hover { color: var(--accent); text-decoration: underline; }
 
 .file-items .badge {
   min-width: 18px;

@@ -17,6 +17,7 @@ const btnReload = document.getElementById('btn-reload');
 const btnWrap = document.getElementById('btn-wrap');
 const btnInsert = document.getElementById('btn-insert');
 const insertMenu = document.getElementById('insert-menu');
+const pathMenu = document.getElementById('path-menu');
 const fileList = document.getElementById('file-list');
 const fileListItems = document.getElementById('file-list-items');
 const btnOpenColumn = document.getElementById('btn-open-column');
@@ -180,11 +181,18 @@ class Column {
       // Folders only fill the file list (entries must be taken now: the data transfer is emptied after the event)
       const folders = [...e.dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter((entry) => entry?.isDirectory);
       if (folders.length) { addDroppedFolders(folders); return; }
-      const file = e.dataTransfer.files[0];
-      if (!file) return;
-      if (zone === 'center') this.openDropped(file);
-      else openDroppedInNewColumn(file, this, zone);
+      const files = [...e.dataTransfer.files];
+      if (files.length) this.openDroppedFiles(files, zone);
     });
+  }
+
+  // Dropped files are listed and opened: the first where dropped, the others in new columns on its right
+  async openDroppedFiles(files, zone) {
+    addDroppedFiles(files);
+    let column = this;
+    if (zone === 'center') await this.openDropped(files[0]);
+    else column = await openDroppedInNewColumn(files[0], this, zone);
+    for (const file of files.slice(1)) column = await openDroppedInNewColumn(file, column, 'right');
   }
 
   dropZone(e) {
@@ -614,12 +622,13 @@ async function openInNewColumn(path, anchor) {
 }
 
 // A file dropped near the edge of a column opens in a new column on that side
-// (the empty column shown at startup is used instead)
+// (the empty column shown at startup is used instead); returns the column of the file
 async function openDroppedInNewColumn(file, beside, side) {
-  if (!beside.loaded) { await beside.openDropped(file); return; }
+  if (!beside.loaded) { await beside.openDropped(file); return beside; }
   const column = addColumn(columns.indexOf(beside) + (side === 'right' ? 1 : 0));
   await column.openDropped(file);
   revealColumn(column);
+  return column;
 }
 
 // Moves the document to a window of its own: a new instance opens it (detached through "start", so it
@@ -969,6 +978,16 @@ async function addDroppedFolders(folders) {
     return;
   }
   found.sort((a, b) => a.key.localeCompare(b.key));
+  addDroppedEntries(found);
+}
+
+// Dropped files are listed by name (their key has no folder), as the Markdown files of a dropped folder
+function addDroppedFiles(files) {
+  addDroppedEntries(files.map((file) => ({ key: `/${file.name}`, file })));
+}
+
+// An entry dropped again updates the one listed (and the columns showing it) instead of repeating it
+function addDroppedEntries(found) {
   for (const { key, file } of found) {
     const entry = visited.find((e) => isDropped(e) && e.key === key);
     if (!entry) { visited.push({ key, file }); continue; }
@@ -1016,7 +1035,8 @@ function fileItem(entry) {
   item.className = openIn.length ? 'open' : '';
   item.classList.toggle('dirty', openIn.some((c) => c.isDirty()));
   item.classList.toggle('active', openIn.includes(active));
-  item.title = isDropped(entry) ? `${entry.key.slice(1)} (cartella trascinata, percorso non noto)` : entry;
+  const droppedFrom = isDropped(entry) && entry.key.lastIndexOf('/') > 0 ? 'cartella trascinata' : 'file trascinato';
+  item.title = isDropped(entry) ? `${entry.key.slice(1)} (${droppedFrom}, percorso non noto)` : entry;
 
   const name = document.createElement('span');
   name.className = 'name';
@@ -1034,15 +1054,13 @@ function fileItem(entry) {
     path.className = 'path';
     // Marks keep the path left to right inside the rtl box that cuts it on the left
     path.textContent = `‎${folder}‎`;
-    // A click copies the full path of the file; a dropped file has none
+    // A click opens the menu of the path (copy, open in Explorer); a dropped file has none
     if (!isDropped(entry)) {
-      path.classList.add('copyable');
-      path.title = 'Clic per copiare il percorso';
-      path.addEventListener('click', async (e) => {
+      path.classList.add('actionable');
+      path.title = 'Clic per le azioni sul percorso';
+      path.addEventListener('click', (e) => {
         e.stopPropagation();
-        await Neutralino.clipboard.writeText(entry);
-        path.textContent = 'Percorso copiato';
-        setTimeout(() => { path.textContent = `‎${folder}‎`; }, 1200);
+        openPathMenu(path, entry, folder);
       });
     }
     label.append(path);
@@ -1243,16 +1261,63 @@ const INSERTS = { 'page-break': '<!-- pagebreak -->' };
 insertMenu.addEventListener('beforetoggle', (e) => {
   btnInsert.setAttribute('aria-expanded', e.newState === 'open');
   btnInsert.classList.toggle('pressed', e.newState === 'open');
+  // Hidden until placed, since its size is known only once open
+  if (e.newState === 'open') insertMenu.style.visibility = 'hidden';
+});
+insertMenu.addEventListener('toggle', (e) => {
   if (e.newState !== 'open') return;
-  const rect = btnInsert.getBoundingClientRect();
-  insertMenu.style.left = `${rect.right + 4}px`;
-  insertMenu.style.top = `${rect.top}px`;
+  placeMenu(insertMenu, btnInsert.getBoundingClientRect(), 'right');
+  insertMenu.style.visibility = '';
 });
 insertMenu.addEventListener('click', (e) => {
   const item = e.target.closest('[data-insert]');
   if (!item) return;
   insertMenu.hidePopover();
   if (active.editing) active.insertBlock(INSERTS[item.dataset.insert]);
+});
+// Places an open menu next to its origin, on the preferred side if it fits in the viewport, otherwise
+// on the opposite side, and in any case within the viewport edges
+const MENU_MARGIN = 4;
+function placeMenu(menu, origin, side) {
+  const { innerWidth: width, innerHeight: height } = window;
+  const { offsetWidth: w, offsetHeight: h } = menu;
+  let left;
+  let top;
+  if (side === 'right') {
+    left = origin.right + MENU_MARGIN;
+    if (left + w > width - MENU_MARGIN) left = origin.left - MENU_MARGIN - w;
+    top = origin.top;
+  } else {
+    top = origin.bottom + 2;
+    if (top + h > height - MENU_MARGIN) top = origin.top - 2 - h;
+    left = origin.left;
+  }
+  menu.style.left = `${Math.max(MENU_MARGIN, Math.min(left, width - MENU_MARGIN - w))}px`;
+  menu.style.top = `${Math.max(MENU_MARGIN, Math.min(top, height - MENU_MARGIN - h))}px`;
+}
+
+// Path menu of a file in the list: opens under the path clicked, or above it near the bottom
+let pathMenuTarget = null;
+function openPathMenu(path, entry, folder) {
+  pathMenuTarget = { path, entry, folder };
+  pathMenu.showPopover();
+  placeMenu(pathMenu, path.getBoundingClientRect(), 'below');
+}
+pathMenu.addEventListener('click', async (e) => {
+  const item = e.target.closest('[data-action]');
+  if (!item || !pathMenuTarget) return;
+  pathMenu.hidePopover();
+  const { path, entry, folder } = pathMenuTarget;
+  if (item.dataset.action === 'copy') {
+    await Neutralino.clipboard.writeText(entry);
+    path.textContent = 'Percorso copiato';
+    setTimeout(() => { path.textContent = `‎${folder}‎`; }, 1200);
+  } else {
+    // Explorer opens the folder with the file selected
+    await Neutralino.os.execCommand(`explorer /select,"${entry}"`, { background: true }).catch(() => {
+      Neutralino.os.showMessageBox('Errore', 'Impossibile aprire il percorso.', 'OK', 'ERROR');
+    });
+  }
 });
 btnBack.addEventListener('click', () => active.goBack());
 btnForward.addEventListener('click', () => active.goForward());
@@ -1427,6 +1492,18 @@ document.addEventListener('mousedown', (e) => { if (e.button === 3 || e.button =
 
 // Middle click / Ctrl+click would open links in a new WebView window
 document.addEventListener('auxclick', (e) => e.preventDefault());
+
+// Files and folders dropped on the file list are only listed, to be opened from there
+fileList.addEventListener('dragover', (e) => { e.preventDefault(); fileList.classList.add('dragging'); });
+fileList.addEventListener('dragleave', (e) => { if (!fileList.contains(e.relatedTarget)) fileList.classList.remove('dragging'); });
+fileList.addEventListener('drop', (e) => {
+  e.preventDefault();
+  fileList.classList.remove('dragging');
+  const folders = [...e.dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter((entry) => entry?.isDirectory);
+  if (folders.length) { addDroppedFolders(folders); return; }
+  const files = [...e.dataTransfer.files];
+  if (files.length) addDroppedFiles(files);
+});
 
 // Any drop outside a column would make the WebView navigate to the file
 document.addEventListener('dragover', (e) => e.preventDefault());
