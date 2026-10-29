@@ -13,6 +13,7 @@ const zoomBadge = document.getElementById('zoom-badge');
 const btnEdit = document.getElementById('btn-edit');
 const btnSave = document.getElementById('btn-save');
 const btnDiscard = document.getElementById('btn-discard');
+const btnReload = document.getElementById('btn-reload');
 const btnWrap = document.getElementById('btn-wrap');
 const btnInsert = document.getElementById('btn-insert');
 const insertMenu = document.getElementById('insert-menu');
@@ -89,6 +90,11 @@ class Column {
     this.savedText = '';
     this.renderedText = '';
     this.eol = '\n';
+    // Size and modification time of the file as last read or written; changed is set when the file
+    // on disk no longer matches them (another program wrote it)
+    this.stamp = null;
+    this.changed = false;
+    this.writing = false;
     this.editing = false;
     this.wrap = false;
     this.mountPoint = null;
@@ -287,10 +293,60 @@ class Column {
     return true;
   }
 
+  async readStamp() {
+    const stats = this.path && await Neutralino.filesystem.getStats(this.path).catch(() => null);
+    this.stamp = stats ? { size: stats.size, modifiedAt: stats.modifiedAt } : null;
+    this.changed = false;
+  }
+
+  // Sets changed if the file on disk differs from the one read or written last
+  async checkChanged() {
+    if (!this.path || !this.stamp || this.changed || this.writing) return;
+    const { path, stamp } = this;
+    const stats = await Neutralino.filesystem.getStats(path).catch(() => null);
+    // The document may have changed, or been saved, in the meantime; a file gone missing is not reported
+    if (!stats || path !== this.path || stamp !== this.stamp || this.writing) return;
+    if (stats.size === stamp.size && stats.modifiedAt === stamp.modifiedAt) return;
+    this.changed = true;
+    updateUI();
+  }
+
+  // Reads the file again, keeping the view on the same block; unsaved changes are lost, after a confirmation
+  async reload() {
+    if (!this.path) return;
+    if (this.isDirty()) {
+      const choice = await Neutralino.os.showMessageBox('Ricarica',
+        `${this.name} è stato modificato da un altro programma.\nRicaricarlo perdendo le modifiche non salvate?`, 'OK_CANCEL', 'WARNING');
+      if (choice !== 'OK') return;
+    }
+    const editing = this.editing;
+    const point = !editing && this.readingPoint();
+    const ratio = this.scroller.scrollTop / Math.max(1, this.scroller.scrollHeight - this.scroller.clientHeight);
+    let text;
+    try {
+      text = await Neutralino.filesystem.readFile(this.path);
+    } catch (err) {
+      Neutralino.os.showMessageBox('Errore', `Impossibile leggere il file:\n${this.path}`, 'OK', 'ERROR');
+      return;
+    }
+    await this.render(text, this.name, this.path);
+    this.followMark = false;
+    if (editing) {
+      this.setEditing(true);
+      updateUI();
+      this.scroller.scrollTop = ratio * (this.scroller.scrollHeight - this.scroller.clientHeight);
+    } else if (point) {
+      const block = this.findBlock(point);
+      if (block) this.scroller.scrollTop += block.getBoundingClientRect().top + point.fraction * block.offsetHeight
+        - this.scroller.getBoundingClientRect().top;
+    }
+  }
+
   async render(text, name, path, dropped = null) {
     this.path = path;
     this.name = name;
     this.dropped = dropped;
+    await this.readStamp();
     if (path) await this.mountFolder(dirOf(path));
     else if (this.mountPoint) {
       await Neutralino.server.unmount(this.mountPoint).catch(() => {});
@@ -378,10 +434,18 @@ class Column {
       if (!path) return false;
       path = path.replace(/\//g, '\\');
     }
+    if (path === this.path && this.changed) {
+      const choice = await Neutralino.os.showMessageBox('Salva',
+        `${this.name} è stato modificato da un altro programma.\nSovrascriverlo con le tue modifiche?`, 'OK_CANCEL', 'WARNING');
+      if (choice !== 'OK') return false;
+    }
     const text = this.editor.value;
+    // The check for changes on disk is suspended, so this write is not taken for another program's
+    this.writing = true;
     try {
       await Neutralino.filesystem.writeFile(path, text.replace(/\n/g, this.eol));
     } catch (err) {
+      this.writing = false;
       Neutralino.os.showMessageBox('Errore', `Impossibile salvare il file:\n${path}`, 'OK', 'ERROR');
       return false;
     }
@@ -396,6 +460,8 @@ class Column {
       addVisited(path);
       saveState();
     }
+    await this.readStamp();
+    this.writing = false;
     updateUI();
     return true;
   }
@@ -838,6 +904,7 @@ function updateUI() {
   const dirty = active.isDirty();
   btnSave.disabled = !dirty;
   btnDiscard.disabled = !dirty;
+  btnReload.disabled = !active.changed;
   btnWrap.disabled = !active.loaded;
   btnWrap.classList.toggle('pressed', active.wrap);
   btnWrap.setAttribute('aria-pressed', active.wrap);
@@ -856,8 +923,8 @@ function updateUI() {
   // Column headers are shown only with more than one column
   columnsEl.classList.toggle('multi', columns.length > 1);
   for (const column of columns) {
-    column.title.textContent = column.loaded ? `${column.isDirty() ? '● ' : ''}${column.name}` : 'Nessun documento';
-    column.title.title = column.path || column.name;
+    column.title.textContent = column.loaded ? `${column.isDirty() ? '● ' : ''}${column.changed ? '↻ ' : ''}${column.name}` : 'Nessun documento';
+    column.title.title = column.changed ? `${column.path}\nModificato da un altro programma` : column.path || column.name;
     column.el.classList.toggle('dirty', column.isDirty());
     column.el.classList.toggle('empty', !column.loaded);
     column.el.classList.toggle('on-disk', !!column.path);
@@ -953,7 +1020,7 @@ function fileItem(entry) {
 
   const name = document.createElement('span');
   name.className = 'name';
-  name.textContent = `${openIn.some((c) => c.isDirty()) ? '● ' : ''}${isDropped(entry) ? entry.file.name : fileName(entry)}`;
+  name.textContent = `${openIn.some((c) => c.isDirty()) ? '● ' : ''}${openIn.some((c) => c.changed) ? '↻ ' : ''}${isDropped(entry) ? entry.file.name : fileName(entry)}`;
   const label = document.createElement('span');
   label.className = 'label';
   label.append(name);
@@ -1169,6 +1236,7 @@ btnBookmark.addEventListener('click', () => setBookmark(active));
 btnEdit.addEventListener('click', () => active.flip());
 btnSave.addEventListener('click', () => active.save());
 btnDiscard.addEventListener('click', () => active.discard());
+btnReload.addEventListener('click', () => active.reload());
 btnWrap.addEventListener('click', () => { if (active.loaded) active.setWrap(!active.wrap); });
 // Insert menu, for the source of the active column: opens on the right of its button
 const INSERTS = { 'page-break': '<!-- pagebreak -->' };
@@ -1239,7 +1307,17 @@ window.addEventListener('focus', async () => {
   applyTheme(settings);
   applyPageWidth(settings);
   reloadBookmarks();
+  checkChangedFiles();
 });
+
+// Files changed on disk by another program are looked for every few seconds and when the window gets the focus
+const CHANGE_CHECK_INTERVAL = 2000;
+
+function checkChangedFiles() {
+  for (const column of columns) column.checkChanged();
+}
+
+setInterval(checkChangedFiles, CHANGE_CHECK_INTERVAL);
 
 // Settings are shared by all windows: they are read again each time the panel opens
 btnSettings.addEventListener('click', async () => {
@@ -1320,6 +1398,8 @@ document.addEventListener('keydown', (e) => {
   if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); active.goBack(); }
   if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); active.goForward(); }
   if (e.altKey && e.key.toLowerCase() === 'z' && active.loaded) { e.preventDefault(); active.setWrap(!active.wrap); }
+  // F5 would reload the whole page
+  if (e.key === 'F5') { e.preventDefault(); if (active.changed) active.reload(); }
   if (!e.ctrlKey) return;
   // Ctrl+Shift+PageUp/PageDown move the active column, as with browser tabs
   if (e.shiftKey && (e.key === 'PageUp' || e.key === 'PageDown')) {

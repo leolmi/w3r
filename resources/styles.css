@@ -428,6 +428,10 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 #btn-save:not(:disabled) { background: var(--warn); color: #fff; }
 #btn-save:not(:disabled):hover { background: var(--warn-hover); color: #fff; }
 
+/* File changed on disk by another program: the reload button lights up */
+#btn-reload:not(:disabled) { background: var(--accent); color: #fff; }
+#btn-reload:not(:disabled):hover { background: var(--accent); color: #fff; filter: brightness(1.15); }
+
 /* Right sidebar: files seen in this window */
 #file-list[hidden] { display: none; }
 

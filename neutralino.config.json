@@ -21,6 +21,7 @@
     "server.mount",
     "server.unmount",
     "filesystem.readFile",
+    "filesystem.getStats",
     "window.setTitle",
     "os.getPath",
     "filesystem.writeFile",
