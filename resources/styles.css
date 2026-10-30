@@ -27,6 +27,9 @@
   --scroll-thumb-hover: rgba(31, 35, 40, 0.5);
   /* The source on the back of the page: the page color, slightly warm */
   --editor-bg: color-mix(in srgb, var(--bgColor-default) 95%, #f0b000);
+  /* A document in editing in the sidebar: the same warm tint, stronger so it stands out like the blue */
+  --editing: #f0b000;
+  --editing-bg: color-mix(in srgb, var(--surface) 82%, #f0b000);
 }
 
 @media screen {
@@ -54,6 +57,8 @@
     --scroll-thumb: rgba(240, 246, 252, 0.2);
     --scroll-thumb-hover: rgba(240, 246, 252, 0.35);
     --editor-bg: color-mix(in srgb, var(--bgColor-default) 96%, #f0b000);
+    --editing: #b88700;
+    --editing-bg: color-mix(in srgb, var(--surface) 85%, #f0b000);
   }
 }
 
@@ -482,6 +487,8 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 .file-items li:hover { background: var(--hover); color: var(--fg); }
 .file-items li.open { border-left-color: var(--accent); background: var(--accent-bg); color: var(--fg); font-weight: 600; cursor: default; }
 
+.file-items li.editing { border-left-color: var(--editing); background: var(--editing-bg); }
+
 .file-items li.dirty { border-left-color: var(--warn); background: var(--warn-bg); color: var(--warn-fg); }
 
 .file-items .label { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 3px 0; }
@@ -529,6 +536,9 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 
 /* Only the number of the active column is blue */
 .file-items .badge.active { background: var(--accent); }
+
+.file-items .badge.editing { display: flex; align-items: center; gap: 2px; }
+.file-items .badge .icon { width: 12px; height: 12px; }
 
 .file-items .remove {
   visibility: hidden;

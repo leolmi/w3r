@@ -1033,6 +1033,7 @@ function fileItem(entry) {
   const openIn = columnsShowing(entry);
   const item = document.createElement('li');
   item.className = openIn.length ? 'open' : '';
+  item.classList.toggle('editing', openIn.some((c) => c.editing));
   item.classList.toggle('dirty', openIn.some((c) => c.isDirty()));
   item.classList.toggle('active', openIn.includes(active));
   const droppedFrom = isDropped(entry) && entry.key.lastIndexOf('/') > 0 ? 'cartella trascinata' : 'file trascinato';
@@ -1073,6 +1074,15 @@ function fileItem(entry) {
     badge.className = column === active ? 'badge active' : 'badge';
     badge.textContent = number;
     badge.title = `Aperto nella colonna ${number}`;
+    // A pencil after the number while the column shows the editor
+    if (column.editing) {
+      const pencil = document.createElement('span');
+      pencil.className = 'icon';
+      pencil.style.setProperty('--icon', 'url(/icons/edit.svg)');
+      badge.append(pencil);
+      badge.classList.add('editing');
+      badge.title += ', in modifica';
+    }
     item.append(badge);
   }
 
