@@ -3,6 +3,7 @@ Neutralino.init();
 const columnsEl = document.getElementById('columns');
 const btnOpen = document.getElementById('btn-open');
 const btnPrint = document.getElementById('btn-print');
+const btnCopyText = document.getElementById('btn-copy-text');
 const btnBookmark = document.getElementById('btn-bookmark');
 const btnBack = document.getElementById('btn-back');
 const btnForward = document.getElementById('btn-forward');
@@ -908,6 +909,7 @@ function updateUI() {
   btnBack.disabled = !active.back.length;
   btnForward.disabled = !active.forward.length;
   btnPrint.disabled = !active.loaded;
+  btnCopyText.disabled = !active.loaded;
   btnBookmark.disabled = !active.loaded || !active.path || active.editing;
   btnEdit.disabled = !active.loaded;
   const dirty = active.isDirty();
@@ -1260,6 +1262,10 @@ btnOpen.addEventListener('click', () => openDialog());
 btnOpenColumn.addEventListener('click', () => openDialog(true));
 btnCloseAll.addEventListener('click', closeAll);
 btnPrint.addEventListener('click', printDocument);
+// Copies the document text as it is in the column (unsaved edits included), with its own line endings
+btnCopyText.addEventListener('click', () => {
+  if (active.loaded) Neutralino.clipboard.writeText(active.editor.value.replace(/\n/g, active.eol));
+});
 btnBookmark.addEventListener('click', () => setBookmark(active));
 btnEdit.addEventListener('click', () => active.flip());
 btnSave.addEventListener('click', () => active.save());
