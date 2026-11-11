@@ -1171,10 +1171,15 @@ function setZoom(level, showBadge = true) {
   settingZoom.value = zoom;
   if (!showBadge) return;
   saveSetting('zoom', zoom);
-  zoomBadge.textContent = `${zoom}%`;
+  flashBadge(`${zoom}%`);
+}
+
+// Short notice in the badge over the columns (zoom level, text copied), announced to screen readers
+function flashBadge(text, duration = 1200) {
+  zoomBadge.textContent = text;
   zoomBadge.classList.add('visible');
   clearTimeout(zoomBadgeTimer);
-  zoomBadgeTimer = setTimeout(() => zoomBadge.classList.remove('visible'), 1200);
+  zoomBadgeTimer = setTimeout(() => zoomBadge.classList.remove('visible'), duration);
 }
 
 function zoomStep(direction) {
@@ -1263,8 +1268,14 @@ btnOpenColumn.addEventListener('click', () => openDialog(true));
 btnCloseAll.addEventListener('click', closeAll);
 btnPrint.addEventListener('click', printDocument);
 // Copies the document text as it is in the column (unsaved edits included), with its own line endings
-btnCopyText.addEventListener('click', () => {
-  if (active.loaded) Neutralino.clipboard.writeText(active.editor.value.replace(/\n/g, active.eol));
+btnCopyText.addEventListener('click', async () => {
+  if (!active.loaded) return;
+  try {
+    await Neutralino.clipboard.writeText(active.editor.value.replace(/\n/g, active.eol));
+    flashBadge('Testo copiato negli appunti', 3000);
+  } catch (err) {
+    Neutralino.os.showMessageBox('Errore', 'Impossibile copiare il testo in clipboard.', 'OK', 'ERROR');
+  }
 });
 btnBookmark.addEventListener('click', () => setBookmark(active));
 btnEdit.addEventListener('click', () => active.flip());
