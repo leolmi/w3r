@@ -2,6 +2,8 @@
 
 Visualizzatore e stampa di file Markdown per Windows, basato su [Neutralinojs](https://neutralino.js.org).
 
+![w3r con due documenti aperti in colonne affiancate](docs/screenshot.png)
+
 ## Sviluppo
 
 ```bash
