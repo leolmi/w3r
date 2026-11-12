@@ -118,7 +118,29 @@
         <span>Apri ogni file da Esplora risorse in una nuova finestra<br>
           <small>Altrimenti il file si aggiunge all'ultima finestra di w3r selezionata</small></span>
       </label>
+      <label class="setting checkbox">
+        <input type="checkbox" id="setting-check-updates">
+        <span>Controlla gli aggiornamenti all'avvio</span>
+      </label>
+      <div class="setting">
+        <span>Versione <span id="app-version"></span></span>
+        <button type="button" id="btn-check-updates" class="text-btn">Verifica ora</button>
+      </div>
       <div class="settings-actions"><button class="text-btn">Chiudi</button></div>
+    </form>
+  </dialog>
+  <dialog id="update" aria-labelledby="update-title">
+    <form method="dialog">
+      <h2 id="update-title">Nuova versione di w3r</h2>
+      <p id="update-text"></p>
+      <pre id="update-notes"></pre>
+      <p id="update-blocker" class="update-blocker"></p>
+      <div class="settings-actions">
+        <button value="skip" class="text-btn">Salta questa versione</button>
+        <button value="page" class="text-btn">Apri la pagina</button>
+        <button value="later" class="text-btn">Più tardi</button>
+        <button value="install" class="text-btn primary" id="btn-install-update">Installa</button>
+      </div>
     </form>
   </dialog>
   <div id="zoom-badge" aria-live="polite"></div>
@@ -151,6 +173,7 @@
   <script src="/vendor/marked.umd.js"></script>
   <script src="/vendor/purify.min.js"></script>
   <script src="/js/storage.js"></script>
+  <script src="/js/updater.js"></script>
   <script src="/js/main.js"></script>
 </body>
 </html>

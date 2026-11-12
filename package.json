@@ -7,7 +7,9 @@
     "postinstall": "node scripts/copy-vendor.js && neu update",
     "dev": "neu run",
     "build": "neu build --embed-resources --clean",
-    "installer": "npm run build && node scripts/installer.js"
+    "installer": "npm run build && node scripts/installer.js",
+    "package": "npm run build && node scripts/package.js",
+    "release": "node scripts/release.js"
   },
   "devDependencies": {
     "@neutralinojs/neu": "^11.7.2",

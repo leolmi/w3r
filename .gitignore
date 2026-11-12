@@ -10,3 +10,4 @@ installer/app.ico
 
 # IDE
 .idea/
+release/

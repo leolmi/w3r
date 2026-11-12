@@ -35,7 +35,8 @@
     "window.unminimize",
     "window.setAlwaysOnTop",
     "os.execCommand",
-    "clipboard.writeText"
+    "clipboard.writeText",
+    "filesystem.getAbsolutePath"
   ],
   "modes": {
     "window": {

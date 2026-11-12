@@ -36,6 +36,9 @@ const settingTheme = document.getElementById('setting-theme');
 const settingMdTheme = document.getElementById('setting-md-theme');
 const settingPageWidth = document.getElementById('setting-page-width');
 const settingPageWidthCustom = document.getElementById('setting-page-width-custom');
+const settingCheckUpdates = document.getElementById('setting-check-updates');
+const btnCheckUpdates = document.getElementById('btn-check-updates');
+const updateDialog = document.getElementById('update');
 
 const MD_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd'];
 
@@ -1415,6 +1418,7 @@ setInterval(checkChangedFiles, CHANGE_CHECK_INTERVAL);
 btnSettings.addEventListener('click', async () => {
   const settings = await loadSettings();
   settingNewWindow.checked = !!settings.newWindowPerFile;
+  settingCheckUpdates.checked = settings.checkUpdates !== false;
   applyTheme(settings);
   settingTheme.value = theme;
   settingMdTheme.value = document.documentElement.dataset.mdTheme;
@@ -1447,6 +1451,73 @@ settingPageWidthCustom.addEventListener('change', () => {
 });
 settingZoom.addEventListener('change', () => setZoom(Number(settingZoom.value)));
 settingNewWindow.addEventListener('change', () => saveSetting('newWindowPerFile', settingNewWindow.checked));
+settingCheckUpdates.addEventListener('change', () => saveSetting('checkUpdates', settingCheckUpdates.checked));
+btnCheckUpdates.addEventListener('click', () => checkForUpdates(true));
+document.getElementById('app-version').textContent = NL_APPVERSION;
+
+// Updates from the GitHub releases (updater.js): looked for at startup by the first window (when the
+// setting is on) or on request, installed only after the user confirms
+const UPDATE_STARTUP_DELAY = 3000;
+let checkingUpdates = false;
+
+// manual: asked by the user, who is told the outcome even when there is nothing new, and is offered a
+// version skipped before
+async function checkForUpdates(manual) {
+  if (checkingUpdates) return;
+  checkingUpdates = true;
+  btnCheckUpdates.disabled = true;
+  btnCheckUpdates.textContent = 'Verifica in corso…';
+  let release = null;
+  try {
+    release = await latestRelease();
+  } catch (err) {
+    if (manual) Neutralino.os.showMessageBox('Aggiornamenti', `Impossibile verificare gli aggiornamenti:\n${err.message || err}`, 'OK', 'ERROR');
+    else console.warn('Update check failed', err);
+    return;
+  } finally {
+    checkingUpdates = false;
+    btnCheckUpdates.disabled = false;
+    btnCheckUpdates.textContent = 'Verifica ora';
+  }
+  if (!release || compareVersions(release.version, NL_APPVERSION) <= 0) {
+    if (manual) Neutralino.os.showMessageBox('Aggiornamenti', `w3r ${NL_APPVERSION} è la versione più recente.`, 'OK', 'INFO');
+    return;
+  }
+  if (!manual && (await loadSettings()).skippedVersion === release.version) return;
+  await offerUpdate(release);
+}
+
+async function offerUpdate(release) {
+  const blocker = await updateBlocker();
+  const others = (await liveInstances()).length;
+  document.getElementById('update-text').textContent = `È disponibile w3r ${release.version} (in uso la ${NL_APPVERSION}, `
+    + `${(release.download.size / 1048576).toFixed(1)} MB). Installandola w3r si chiude e si riapre con i documenti aperti.`
+    + (others ? ` Le altre ${others === 1 ? 'finestra resta aperta' : `${others} finestre restano aperte`} con la versione attuale fino alla chiusura.` : '');
+  document.getElementById('update-notes').textContent = release.notes.trim();
+  document.getElementById('update-blocker').textContent = blocker || '';
+  document.getElementById('btn-install-update').disabled = !!blocker;
+  if (settingsDialog.open) settingsDialog.close();
+  updateDialog.returnValue = '';
+  updateDialog.showModal();
+  const choice = await new Promise((resolve) => updateDialog.addEventListener('close', () => resolve(updateDialog.returnValue), { once: true }));
+  if (choice === 'skip') saveSetting('skippedVersion', release.version);
+  if (choice === 'page') Neutralino.os.open(release.page);
+  if (choice === 'install') await startUpdate(release);
+}
+
+// Unsaved changes are dealt with first; the documents on disk open again in the new version
+async function startUpdate(release) {
+  for (const column of columns) {
+    if (!(await column.confirmLeave())) return;
+  }
+  flashBadge(`Download di w3r ${release.version}…`, 600000);
+  try {
+    await installUpdate(release, columns.filter((c) => c.path).map((c) => c.path));
+  } catch (err) {
+    flashBadge('', 0);
+    Neutralino.os.showMessageBox('Aggiornamenti', `Impossibile installare l'aggiornamento:\n${err.message || err}`, 'OK', 'ERROR');
+  }
+}
 
 // Windows lets a background process only flash the taskbar button: being topmost for a moment
 // brings the window up anyway
@@ -1572,10 +1643,21 @@ Neutralino.events.on('ready', async () => {
   });
 
   bookmarks = await loadBookmarks();
+  const updated = await finishUpdate().catch(() => null);
   if (fullPath) active.navigateTo(fullPath);
-  else restoreState();
+  else if (updated?.paths?.length) {
+    for (const [index, path] of updated.paths.entries()) {
+      if (index) await openInNewColumn(path); else await active.navigateTo(path);
+    }
+  } else restoreState();
   addBookmarked();
   updateUI();
+  if (updated) flashBadge(`w3r aggiornato alla versione ${updated.to}`, 4000);
+
+  // Only the first window looks for updates at startup
+  if (settings.checkUpdates !== false && !(await liveInstances()).length) {
+    setTimeout(() => checkForUpdates(false), UPDATE_STARTUP_DELAY);
+  }
 });
 
 Neutralino.events.on('windowClose', async () => {

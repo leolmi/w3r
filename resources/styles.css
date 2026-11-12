@@ -392,7 +392,7 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 /* Settings at the bottom of the sidebar */
 #btn-settings { margin-top: auto; }
 
-#settings {
+#settings, #update {
   width: 420px;
   padding: 20px 24px;
   border: 1px solid var(--border);
@@ -402,8 +402,17 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   font-size: 14px;
 }
 
-#settings::backdrop { background: var(--overlay); }
-#settings h2 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
+#settings::backdrop, #update::backdrop { background: var(--overlay); }
+#settings h2, #update h2 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
+
+#update { width: 520px; }
+#update-notes { max-height: 240px; overflow: auto; margin: 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; white-space: pre-wrap; font: inherit; }
+#update-notes:empty { display: none; }
+.update-blocker { color: var(--warn); }
+.update-blocker:empty { display: none; }
+#update .settings-actions { gap: 8px; flex-wrap: wrap; }
+.text-btn.primary:not(:disabled) { background: var(--accent, var(--fg)); border-color: transparent; color: var(--bg); }
+.text-btn:disabled { opacity: 0.5; cursor: default; }
 
 .setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .setting.checkbox { justify-content: flex-start; align-items: flex-start; }
