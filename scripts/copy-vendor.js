@@ -9,13 +9,23 @@ const githubCssDir = path.join(root, 'node_modules', 'github-markdown-css');
 const files = [
   'node_modules/marked/lib/marked.umd.js',
   'node_modules/dompurify/dist/purify.min.js',
-  // Loaded only by the documents with diagrams
-  'node_modules/mermaid/dist/mermaid.min.js'
+  ['node_modules/marked-footnote/dist/index.umd.js', 'marked-footnote.umd.js'],
+  'node_modules/@highlightjs/cdn-assets/highlight.min.js',
+  // Loaded only by the documents with diagrams or formulas
+  'node_modules/mermaid/dist/mermaid.min.js',
+  ['node_modules/katex/dist/katex.min.js', 'katex/katex.min.js'],
+  ['node_modules/katex/dist/katex.min.css', 'katex/katex.min.css']
 ];
 
-fs.mkdirSync(vendorDir, { recursive: true });
+fs.mkdirSync(path.join(vendorDir, 'katex', 'fonts'), { recursive: true });
 for (const file of files) {
-  fs.copyFileSync(path.join(root, file), path.join(vendorDir, path.basename(file)));
+  const [from, to] = Array.isArray(file) ? file : [file, path.basename(file)];
+  fs.copyFileSync(path.join(root, from), path.join(vendorDir, to));
+}
+// KaTeX fonts: woff2 only, the first format of the stylesheet, read by the webview
+const katexFonts = path.join(root, 'node_modules', 'katex', 'dist', 'fonts');
+for (const font of fs.readdirSync(katexFonts).filter((name) => name.endsWith('.woff2'))) {
+  fs.copyFileSync(path.join(katexFonts, font), path.join(vendorDir, 'katex', 'fonts', font));
 }
 
 // GitHub Markdown styles, split in layout and colors so the colors can follow the themes:

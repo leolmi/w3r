@@ -64,8 +64,142 @@ marked.use({
       if (match) return { type: 'pageBreak', raw: match[0] };
     },
     renderer: () => '<div class="page-break"></div>\n'
+  }, {
+    // Formulas: $$...$$ on lines of their own, $$...$$ and $...$ in the text (as on GitHub, $ is not
+    // followed by a space, the closing one is not preceded by a space nor followed by a digit: "$5 and $10" is text)
+    name: 'blockMath',
+    level: 'block',
+    start: (src) => src.match(/^ {0,3}\$\$/m)?.index,
+    tokenizer(src) {
+      const match = /^ {0,3}\$\$([\s\S]+?)\$\$[ \t]*(?:\n+|$)/.exec(src);
+      if (match) return { type: 'blockMath', raw: match[0], text: match[1].trim() };
+    },
+    renderer: (token) => mathHtml(token.text, true)
+  }, {
+    name: 'inlineMath',
+    level: 'inline',
+    start: (src) => { const index = src.indexOf('$'); return index < 0 ? undefined : index; },
+    tokenizer(src) {
+      const match = /^\$\$((?:\\.|[^\\$])+?)\$\$/.exec(src) || /^\$(?!\s)((?:\\.|[^\\\n$])+?)(?<!\s)\$(?!\d)/.exec(src);
+      if (match) return { type: 'inlineMath', raw: match[0], text: match[1].trim(), display: match[0].startsWith('$$') };
+    },
+    renderer: (token) => mathHtml(token.text, token.display, true)
   }]
 });
+marked.use(markedFootnote({ description: 'Note' }));
+hljs.configure({ ignoreUnescapedHTML: true });
+
+function escapeHtml(text) {
+  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+// A formula shows its source until KaTeX draws it; the source stays in data-source, for the reading point
+function mathHtml(tex, display, inline = false) {
+  const tag = inline ? 'span' : 'div';
+  const html = `<${tag} class="math ${display ? 'math-display' : 'math-inline'}" data-source="${escapeHtml(tex)}">${escapeHtml(tex)}</${tag}>`;
+  return inline ? html : `${html}\n`;
+}
+
+// Front matter: the YAML block between --- lines at the start of the file (Jekyll, Hugo, Obsidian),
+// shown as a table of its top-level keys; a block that is not key: value lines is shown as code
+const FRONT_MATTER = /^---[ \t]*\n([\s\S]*?)\n(?:---|\.\.\.)[ \t]*(?:\n|$)/;
+
+function splitFrontMatter(markdown) {
+  const match = FRONT_MATTER.exec(markdown);
+  return match ? { frontMatter: match[1], body: markdown.slice(match[0].length) } : { frontMatter: null, body: markdown };
+}
+
+// Indented lines lose their common indentation; a block scalar (| or >) loses its indicator; a quoted value its quotes
+function frontMatterValue([first, ...more]) {
+  if (/^[|>][+-]?$/.test(first)) first = '';
+  const indent = Math.min(...more.filter((line) => line.trim()).map((line) => /^\s*/.exec(line)[0].length));
+  more = more.map((line) => line.slice(Number.isFinite(indent) ? indent : 0));
+  const text = (first ? [first, ...more] : more).join('\n').trim();
+  const quoted = /^(["'])(.*)\1$/.exec(text);
+  return quoted && !text.includes('\n') ? quoted[2] : text;
+}
+
+function frontMatterElement(yaml) {
+  const entries = [];
+  for (const line of yaml.split('\n')) {
+    if (/^\s*#/.test(line) || !line.trim()) {
+      if (entries.length && !line.trim()) entries[entries.length - 1][1].push('');
+      continue;
+    }
+    const match = /^([^\s#-][^:]*):(?:[ \t]+(.*)|[ \t]*$)/.exec(line);
+    if (match) entries.push([match[1].trim(), [match[2]?.trim() ?? '']]);
+    else if (entries.length && (/^\s/.test(line) || line.startsWith('-'))) entries[entries.length - 1][1].push(line);
+    else { entries.length = 0; break; }
+  }
+  if (!entries.length) {
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.className = 'language-yaml';
+    code.textContent = yaml;
+    pre.append(code);
+    pre.classList.add('front-matter');
+    return pre;
+  }
+  const table = document.createElement('table');
+  table.className = 'front-matter';
+  const body = table.createTBody();
+  for (const [key, lines] of entries) {
+    const row = body.insertRow();
+    const th = document.createElement('th');
+    th.textContent = key;
+    row.append(th);
+    row.insertCell().textContent = frontMatterValue(lines);
+  }
+  return table;
+}
+
+// GitHub alerts: a blockquote that starts with [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION]
+const ALERT_ICON_MARK = '<rect x="7.25" y="5.25" width="1.5" height="4" rx=".75"/><circle cx="8" cy="11.25" r=".9"/>';
+const ALERTS = {
+  note: ['Nota', '<circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="7.25" y="7" width="1.5" height="4.5" rx=".75"/><circle cx="8" cy="4.75" r=".9"/>'],
+  tip: ['Suggerimento', '<path d="M8 1.5a4.5 4.5 0 0 0-2.7 8.1c.4.3.7.8.7 1.3V12h4v-1.1c0-.5.3-1 .7-1.3A4.5 4.5 0 0 0 8 1.5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><rect x="6" y="13.25" width="4" height="1.5" rx=".75"/>'],
+  important: ['Importante', '<path d="M2 2.25h12v8.5H7.25L4 13.5v-2.75H2Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><rect x="7.25" y="4" width="1.5" height="3.5" rx=".75"/><circle cx="8" cy="9" r=".9"/>'],
+  warning: ['Attenzione', `<path d="M8 1.75 14.75 13.75H1.25Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>${ALERT_ICON_MARK}`],
+  caution: ['Pericolo', `<path d="M5.3 1.75h5.4l3.55 3.55v5.4l-3.55 3.55H5.3L1.75 10.7V5.3Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>${ALERT_ICON_MARK}`]
+};
+
+function addAlerts(root) {
+  for (const quote of root.querySelectorAll('blockquote')) {
+    const first = quote.firstElementChild;
+    const text = first?.tagName === 'P' ? first.firstChild : null;
+    const match = text?.nodeType === Node.TEXT_NODE && /^\s*\[!(\w+)\][ \t]*(?:\n|$)/.exec(text.data);
+    const type = match && match[1].toLowerCase();
+    if (!ALERTS[type]) continue;
+    text.data = text.data.slice(match[0].length);
+    if (!first.textContent.trim() && !first.querySelector('img')) first.remove();
+    const alert = document.createElement('div');
+    alert.className = `markdown-alert markdown-alert-${type}`;
+    const title = document.createElement('p');
+    title.className = 'markdown-alert-title';
+    title.innerHTML = `<svg class="octicon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">${ALERTS[type][1]}</svg>`;
+    title.append(ALERTS[type][0]);
+    alert.append(title, ...quote.childNodes);
+    quote.replaceWith(alert);
+  }
+}
+
+// Code blocks of a known language get syntax colors (the colors of the Markdown theme)
+function highlightCode(root) {
+  for (const code of root.querySelectorAll('pre > code[class*="language-"]')) {
+    const language = /language-(\S+)/.exec(code.className)[1];
+    if (hljs.getLanguage(language)) hljs.highlightElement(code);
+  }
+}
+
+// ```math code blocks are formulas on lines of their own, as on GitHub
+function mathCodeBlocks(root) {
+  for (const code of root.querySelectorAll('pre > code.language-math')) {
+    const div = document.createElement('div');
+    div.className = 'math math-display';
+    div.dataset.source = div.textContent = code.textContent.trim();
+    code.parentElement.replaceWith(div);
+  }
+}
 
 // Mermaid diagrams (```mermaid code blocks): the library is loaded by the first document that has one.
 // Diagrams are drawn one at a time, since the library is configured globally
@@ -73,15 +207,37 @@ let mermaidLoading = null;
 let diagramQueue = Promise.resolve();
 let diagramCounter = 0;
 
-function loadMermaid() {
-  mermaidLoading ??= new Promise((resolve, reject) => {
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '/vendor/mermaid.min.js';
-    script.onload = () => resolve(window.mermaid);
-    script.onerror = () => { mermaidLoading = null; reject(new Error('Libreria dei diagrammi non disponibile')); };
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = () => { script.remove(); reject(new Error(`${src} non disponibile`)); };
     document.head.append(script);
   });
+}
+
+function loadMermaid() {
+  mermaidLoading ??= loadScript('/vendor/mermaid.min.js').then(() => window.mermaid, (err) => { mermaidLoading = null; throw err; });
   return mermaidLoading;
+}
+
+// KaTeX, for the formulas, is loaded by the first document that has one, with its stylesheet
+let katexLoading = null;
+
+function loadKatex() {
+  katexLoading ??= Promise.all([
+    loadScript('/vendor/katex/katex.min.js'),
+    new Promise((resolve, reject) => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = '/vendor/katex/katex.min.css';
+      link.onload = resolve;
+      link.onerror = reject;
+      document.head.append(link);
+    })
+  ]).then(() => window.katex, (err) => { katexLoading = null; throw err; });
+  return katexLoading;
 }
 
 // Returns the SVG of the diagram; each drawing has its own id, which scopes its styles and arrowheads
@@ -96,9 +252,18 @@ async function drawDiagram(mermaid, source, theme, fontFamily) {
   }
 }
 
-// The text that identifies a top-level block for the reading point: a diagram by its source
+// The text that identifies a top-level block for the reading point: diagrams and formulas by their source,
+// so the text is the same before and after they are drawn
 function blockText(block) {
-  return (block.dataset.source ?? block.textContent).trim().slice(0, 80);
+  let text = block.dataset.source;
+  if (text === undefined) {
+    if (block.querySelector('[data-source]')) {
+      block = block.cloneNode(true);
+      for (const el of block.querySelectorAll('[data-source]')) el.replaceWith(el.dataset.source);
+    }
+    text = block.textContent;
+  }
+  return text.trim().slice(0, 80);
 }
 
 function dirOf(path) {
@@ -297,7 +462,8 @@ class Column {
   }
 
   renderMarkdown(markdown) {
-    const fragment = DOMPurify.sanitize(marked.parse(markdown), {
+    const { frontMatter, body } = splitFrontMatter(markdown);
+    const fragment = DOMPurify.sanitize(marked.parse(body), {
       FORBID_TAGS: ['form', 'iframe', 'object', 'embed', 'base', 'meta'],
       RETURN_DOM_FRAGMENT: true
     });
@@ -308,18 +474,39 @@ class Column {
         if (RELATIVE_URL.test(src)) el.setAttribute('src', `${this.mountPoint}/${src}`);
       }
     }
+    if (frontMatter !== null) fragment.prepend(frontMatterElement(frontMatter));
+    addAlerts(fragment);
+    mathCodeBlocks(fragment);
+    highlightCode(fragment);
     this.content.replaceChildren(fragment);
     this.addHeadingIds();
     this.renderedText = markdown;
-    this.renderDiagrams();
+    // Diagrams and formulas are drawn later: a document rendered again in the meantime drops the drawings
+    const token = this.renderCount = (this.renderCount || 0) + 1;
+    this.renderDiagrams(token);
+    this.renderMath(token);
     this.placeMark();
   }
 
+  async renderMath(token) {
+    const formulas = [...this.content.querySelectorAll('.math')];
+    if (!formulas.length) return;
+    let katex;
+    try {
+      katex = await loadKatex();
+    } catch (err) {
+      return;
+    }
+    for (const el of formulas) {
+      if (token !== this.renderCount) return;
+      // Errors are shown in the formula, in red, with its source
+      katex.render(el.dataset.source, el, { displayMode: el.classList.contains('math-display'), throwOnError: false });
+    }
+  }
+
   // The mermaid code blocks are replaced by their diagrams once drawn, in a light and a dark version
-  // (the print is always light); a document rendered again in the meantime drops the drawings.
-  // A diagram that cannot be drawn keeps its code, with the error above it
-  renderDiagrams() {
-    const token = this.renderCount = (this.renderCount || 0) + 1;
+  // (the print is always light). A diagram that cannot be drawn keeps its code, with the error above it
+  renderDiagrams(token) {
     const blocks = [...this.content.querySelectorAll('pre > code.language-mermaid')].map((code) => code.parentElement);
     if (!blocks.length) return;
     const fontFamily = getComputedStyle(this.content).fontFamily;
@@ -1362,7 +1549,7 @@ function scaleWideBlocks() {
   unscaleWideBlocks();
   const content = active.content;
   content.style.display = 'block';
-  for (const block of content.querySelectorAll('table, pre')) {
+  for (const block of content.querySelectorAll('table, pre, .math-display')) {
     if (printScaled.some((scaled) => scaled.contains(block))) continue;
     if (block.scrollWidth > block.clientWidth) {
       // The zoomed layout rounds on its own (differently in print): shrunk a little more, and again
