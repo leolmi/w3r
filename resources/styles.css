@@ -639,6 +639,17 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 /* Page break: a dashed line on screen, a new page in print */
 .markdown-body .page-break { margin: 24px 0; border-top: 1px dashed var(--borderColor-default); }
 
+/* Mermaid diagrams: the dark version only on screen with the dark scheme */
+.markdown-body .diagram { margin-bottom: 16px; text-align: center; }
+.markdown-body .diagram svg { max-width: 100%; height: auto; }
+.markdown-body .diagram.invalid { text-align: left; }
+.markdown-body .diagram-error { margin-bottom: 8px; color: var(--fgColor-danger, #d1242f); font-size: 0.9em; }
+.markdown-body .diagram-dark { display: none; }
+@media screen {
+  :root[data-scheme="dark"] .markdown-body .diagram-light { display: none; }
+  :root[data-scheme="dark"] .markdown-body .diagram-dark { display: block; }
+}
+
 @media print {
   /* No size: paper and orientation are chosen in the print dialog. Keep in sync with --print-page-width */
   @page { margin: 15mm; }
@@ -667,6 +678,7 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   .markdown-body pre,
   .markdown-body table,
   .markdown-body img,
+  .markdown-body .diagram,
   .markdown-body blockquote { break-inside: avoid; }
   .markdown-body pre, .markdown-body table { overflow: hidden; }
 

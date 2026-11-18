@@ -8,7 +8,9 @@ const githubCssDir = path.join(root, 'node_modules', 'github-markdown-css');
 
 const files = [
   'node_modules/marked/lib/marked.umd.js',
-  'node_modules/dompurify/dist/purify.min.js'
+  'node_modules/dompurify/dist/purify.min.js',
+  // Loaded only by the documents with diagrams
+  'node_modules/mermaid/dist/mermaid.min.js'
 ];
 
 fs.mkdirSync(vendorDir, { recursive: true });

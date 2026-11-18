@@ -67,6 +67,40 @@ marked.use({
   }]
 });
 
+// Mermaid diagrams (```mermaid code blocks): the library is loaded by the first document that has one.
+// Diagrams are drawn one at a time, since the library is configured globally
+let mermaidLoading = null;
+let diagramQueue = Promise.resolve();
+let diagramCounter = 0;
+
+function loadMermaid() {
+  mermaidLoading ??= new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = '/vendor/mermaid.min.js';
+    script.onload = () => resolve(window.mermaid);
+    script.onerror = () => { mermaidLoading = null; reject(new Error('Libreria dei diagrammi non disponibile')); };
+    document.head.append(script);
+  });
+  return mermaidLoading;
+}
+
+// Returns the SVG of the diagram; each drawing has its own id, which scopes its styles and arrowheads
+async function drawDiagram(mermaid, source, theme, fontFamily) {
+  const id = `diagram-${++diagramCounter}`;
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme, themeVariables: { fontFamily } });
+  try {
+    return (await mermaid.render(id, source)).svg;
+  } finally {
+    // Left in the page by a failed drawing
+    document.getElementById(`d${id}`)?.remove();
+  }
+}
+
+// The text that identifies a top-level block for the reading point: a diagram by its source
+function blockText(block) {
+  return (block.dataset.source ?? block.textContent).trim().slice(0, 80);
+}
+
 function dirOf(path) {
   return path.replace(/[\\/][^\\/]*$/, '');
 }
@@ -277,7 +311,48 @@ class Column {
     this.content.replaceChildren(fragment);
     this.addHeadingIds();
     this.renderedText = markdown;
+    this.renderDiagrams();
     this.placeMark();
+  }
+
+  // The mermaid code blocks are replaced by their diagrams once drawn, in a light and a dark version
+  // (the print is always light); a document rendered again in the meantime drops the drawings.
+  // A diagram that cannot be drawn keeps its code, with the error above it
+  renderDiagrams() {
+    const token = this.renderCount = (this.renderCount || 0) + 1;
+    const blocks = [...this.content.querySelectorAll('pre > code.language-mermaid')].map((code) => code.parentElement);
+    if (!blocks.length) return;
+    const fontFamily = getComputedStyle(this.content).fontFamily;
+    diagramQueue = diagramQueue.then(async () => {
+      let mermaid;
+      try {
+        mermaid = await loadMermaid();
+      } catch (err) {
+        return;
+      }
+      for (const pre of blocks) {
+        if (token !== this.renderCount) return;
+        const source = pre.textContent;
+        const figure = document.createElement('div');
+        figure.className = 'diagram';
+        figure.dataset.source = source;
+        try {
+          for (const [theme, scheme] of [['default', 'light'], ['dark', 'dark']]) {
+            const variant = document.createElement('div');
+            variant.className = `diagram-${scheme}`;
+            variant.innerHTML = await drawDiagram(mermaid, source, theme, fontFamily);
+            figure.append(variant);
+          }
+        } catch (err) {
+          const message = document.createElement('p');
+          message.className = 'diagram-error';
+          message.textContent = `Diagramma non valido: ${String(err?.message ?? err).split('\n')[0]}`;
+          figure.replaceChildren(message, pre.cloneNode(true));
+          figure.classList.add('invalid');
+        }
+        if (token === this.renderCount) pre.replaceWith(figure);
+      }
+    });
   }
 
   // The reading point is the first line in view (or the given height in the window): the top-level block
@@ -289,12 +364,12 @@ class Column {
     if (index < 0) return null;
     const rect = blocks[index].getBoundingClientRect();
     const fraction = rect.height ? Math.min(1, Math.max(0, (top - rect.top) / rect.height)) : 0;
-    return { block: index, fraction, text: blocks[index].textContent.trim().slice(0, 80) };
+    return { block: index, fraction, text: blockText(blocks[index]) };
   }
 
   findBlock(bookmark) {
     const blocks = [...this.content.children];
-    const sameText = (block) => block.textContent.trim().slice(0, 80) === bookmark.text;
+    const sameText = (block) => blockText(block) === bookmark.text;
     const block = blocks[bookmark.block];
     if (block && sameText(block)) return block;
     return blocks.find(sameText) || blocks[Math.min(bookmark.block, blocks.length - 1)];

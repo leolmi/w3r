@@ -1,6 +1,6 @@
 {
   "name": "w3r",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Visualizzatore e stampa di file Markdown per Windows (Neutralinojs)",
   "private": true,
   "scripts": {
@@ -16,6 +16,7 @@
     "dompurify": "^3.4.16",
     "github-markdown-css": "^5.9.0",
     "marked": "^18.0.14",
+    "mermaid": "^11.17.2",
     "png2icons": "^2.0.1"
   }
 }
