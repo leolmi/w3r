@@ -10,6 +10,10 @@
 </head>
 <body>
   <nav class="sidebar">
+    <button id="btn-file-list" class="icon-btn" title="Mostra l'elenco dei file" aria-label="Mostra l'elenco dei file" aria-pressed="false" disabled>
+      <span class="icon" style="--icon: url(/icons/left_panel_open.svg)"></span>
+    </button>
+    <hr>
     <button id="btn-back" class="icon-btn" title="Indietro (Alt+←)" aria-label="Indietro" disabled>
       <span class="icon" style="--icon: url(/icons/arrow_back.svg)"></span>
     </button>
@@ -64,6 +68,26 @@
       <span class="icon" style="--icon: url(/icons/settings.svg)"></span>
     </button>
   </nav>
+  <aside id="file-list" aria-label="File visti" hidden>
+    <header class="file-list-header">
+      <span id="file-list-count"></span>
+      <span class="file-list-actions">
+        <button id="btn-close-all" class="icon-btn small" title="Chiudi i documenti senza punto di lettura e svuota l'elenco" aria-label="Chiudi i documenti senza punto di lettura">
+          <span class="icon" style="--icon: url(/icons/playlist_remove.svg)"></span>
+        </button>
+        <button id="btn-hide-file-list" class="icon-btn small" title="Nascondi l'elenco dei file" aria-label="Nascondi l'elenco dei file">
+          <span class="icon" style="--icon: url(/icons/left_panel_close.svg)"></span>
+        </button>
+      </span>
+    </header>
+    <ul id="file-list-items" class="file-items"></ul>
+    <section id="bookmark-list" aria-label="Punti di lettura" hidden>
+      <header class="file-list-header">
+        <span class="title"><span class="mark"></span>Punti di lettura</span>
+      </header>
+      <ul id="bookmark-list-items" class="file-items"></ul>
+    </section>
+  </aside>
   <div id="insert-menu" class="menu" role="menu" aria-label="Inserisci" popover>
     <button class="menu-item" role="menuitem" data-insert="page-break">
       <span class="icon" style="--icon: url(/icons/page_break.svg)"></span>Salto pagina
@@ -119,6 +143,11 @@
           <small>Altrimenti il file si aggiunge all'ultima finestra di w3r selezionata</small></span>
       </label>
       <label class="setting checkbox">
+        <input type="checkbox" id="setting-restore-session">
+        <span>Riapri i documenti dell'ultima sessione<br>
+          <small>All'avvio senza un file da aprire tornano le finestre chiuse per ultime, con i loro documenti</small></span>
+      </label>
+      <label class="setting checkbox">
         <input type="checkbox" id="setting-check-updates">
         <span>Controlla gli aggiornamenti all'avvio</span>
       </label>
@@ -153,21 +182,6 @@
       <span class="icon" style="--icon: url(/icons/chevron_right.svg)"></span>
     </button>
   </div>
-  <aside id="file-list" aria-label="File visti" hidden>
-    <header class="file-list-header">
-      <span id="file-list-count"></span>
-      <button id="btn-close-all" class="icon-btn small" title="Chiudi i documenti senza punto di lettura e svuota l'elenco" aria-label="Chiudi i documenti senza punto di lettura">
-        <span class="icon" style="--icon: url(/icons/playlist_remove.svg)"></span>
-      </button>
-    </header>
-    <ul id="file-list-items" class="file-items"></ul>
-    <section id="bookmark-list" aria-label="Punti di lettura" hidden>
-      <header class="file-list-header">
-        <span class="title"><span class="mark"></span>Punti di lettura</span>
-      </header>
-      <ul id="bookmark-list-items" class="file-items"></ul>
-    </section>
-  </aside>
 
   <script src="/js/neutralino.js"></script>
   <script src="/vendor/marked.umd.js"></script>

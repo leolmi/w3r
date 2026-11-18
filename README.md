@@ -2,7 +2,32 @@
 
 Visualizzatore e stampa di file Markdown per Windows, basato su [Neutralinojs](https://neutralino.js.org).
 
-![w3r con due documenti aperti in colonne affiancate](docs/screenshot.png)
+![w3r con due documenti in colonne affiancate, uno dei due in modifica](docs/screenshot.png)
+
+## Funzionalità
+
+- **Colonne affiancate**: più documenti nella stessa finestra, ciascuno con il suo scorrimento e la sua
+  cronologia (Indietro/Avanti); i link relativi tra file Markdown si aprono nella colonna. Una colonna
+  si sposta con il trascinamento dell'intestazione o si porta in una nuova finestra.
+- **Apertura**: da Esplora risorse (associazione dei file `.md`), dal pulsante Apri o trascinando
+  file e cartelle sulla finestra. Un file aperto da Esplora risorse va nell'ultima finestra di w3r
+  usata, oppure in una nuova (Impostazioni).
+- **Modifica**: il foglio si gira e mostra il testo Markdown; salvataggio, annullamento di tutte le
+  modifiche e inserimento del salto pagina. Un file modificato da un altro programma si può ricaricare.
+- **Punti di lettura**: un segnalibro per documento, condiviso tra le finestre; alla riapertura il
+  documento torna a quel punto.
+- **Elenco dei file** nel pannello a sinistra: i documenti visti nella finestra e quelli con un punto
+  di lettura. Si nasconde e si riapre dal pulsante in cima alla barra degli strumenti.
+- **Percorso del documento** in cima a ogni colonna: al clic il menu per copiarlo negli appunti o
+  aprirlo in Esplora risorse.
+- **Riapertura dell'ultima sessione** (Impostazioni, disattivata di default): avviando w3r senza un
+  file da aprire tornano le finestre chiuse per ultime, nella loro posizione e con i loro documenti.
+  Contano le finestre chiuse insieme all'ultima (a pochi secondi di distanza, o allo spegnimento di
+  Windows); una finestra chiusa prima, mentre altre restavano aperte, non torna.
+- **Lettura**: zoom dei documenti, larghezza della pagina, a capo automatico per colonna, tema chiaro
+  o scuro e quattro temi per i documenti (GitHub, GitHub alto contrasto, Solarized, Accademico).
+- **Stampa** con salti pagina e **copia** del testo del documento negli appunti.
+- **Aggiornamento automatico** dalle release GitHub (vedi sotto).
 
 ## Sviluppo
 
@@ -41,6 +66,13 @@ o `\newpage`).
 | Scorciatoia | Azione |
 |---|---|
 | Ctrl+O | Apri file |
+| Ctrl+Maiusc+O | Apri in una nuova colonna |
+| Ctrl+E | Modifica / anteprima |
+| Ctrl+S | Salva |
+| F5 | Ricarica il file modificato da un altro programma |
 | Ctrl+P | Stampa |
+| Ctrl+B | Punto di lettura |
+| Ctrl++ / Ctrl+- / Ctrl+0 | Zoom (anche Ctrl+rotellina) |
+| Ctrl+Maiusc+PagSu / PagGiù | Sposta la colonna attiva |
 | Alt+← / Alt+→ | Indietro / Avanti |
 | Alt+Z | A capo automatico (per colonna) |

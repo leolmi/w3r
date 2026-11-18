@@ -54,22 +54,38 @@ async function saveBookmark(path, bookmark) {
   await Neutralino.filesystem.writeFile(file, JSON.stringify(bookmarks, null, 2)).catch(() => {});
 }
 
-// Each instance owns one file (no write conflicts) with its window position, a heartbeat timestamp
-// and the time its window was last selected (a new window counts as selected)
+// Each instance owns one file (no write conflicts) with its window position and size, a heartbeat timestamp,
+// the time its window was last selected (a new window counts as selected) and its documents (state, set
+// by setInstanceState), kept for the session restored at the next start
 let focusedAt = Date.now();
+let instanceState = null;
 
 async function instanceFile() {
   return `${await getAppDataDir()}\\instances\\${NL_PID}.json`;
 }
 
-async function writeInstance() {
+async function windowGeometry() {
   const position = await Neutralino.window.getPosition().catch(() => null);
-  if (!position) return;
-  await Neutralino.filesystem.writeFile(await instanceFile(),
-    JSON.stringify({ x: position.x, y: position.y, at: Date.now(), focusedAt })).catch(() => {});
+  if (!position) return null;
+  const size = await Neutralino.window.getSize().catch(() => ({}));
+  const maximized = await Neutralino.window.isMaximized().catch(() => false);
+  return { x: position.x, y: position.y, width: size.width, height: size.height, maximized };
 }
 
-// The other instances still alive, with their pid; stale files (crashed instances) are removed
+async function writeInstance() {
+  const geometry = await windowGeometry();
+  if (!geometry) return;
+  await Neutralino.filesystem.writeFile(await instanceFile(),
+    JSON.stringify({ ...geometry, at: Date.now(), focusedAt, state: instanceState })).catch(() => {});
+}
+
+function setInstanceState(state) {
+  instanceState = state;
+  writeInstance();
+}
+
+// The other instances still alive, with their pid; the files of crashed instances (stale) go to the
+// session, as windows closed at their last heartbeat
 async function liveInstances() {
   const dir = `${await getAppDataDir()}\\instances`;
   const entries = await Neutralino.filesystem.readDirectory(dir).catch(() => []);
@@ -79,14 +95,90 @@ async function liveInstances() {
     const path = `${dir}\\${entry.entry}`;
     const data = await readJson(path);
     if (data && Date.now() - data.at < INSTANCE_STALE_MS) instances.push({ ...data, pid: entry.entry.replace(/\.json$/, '') });
-    else await Neutralino.filesystem.remove(path).catch(() => {});
+    else {
+      if (data) await archiveWindow(entry.entry, { ...data, closedAt: data.at });
+      await Neutralino.filesystem.remove(path).catch(() => {});
+    }
   }
   return instances;
 }
 
+// Session: the windows closed last, one file each ({ x, y, width, height, maximized, state, closedAt }).
+// Windows closed within SESSION_TOGETHER_MS of the last one count as closed together (one after the
+// other, or by the shutdown of Windows); one closed earlier, while others stayed open, was closed on purpose
+const SESSION_TOGETHER_MS = 15000;
+
+async function sessionDir(name = 'session') {
+  const dir = `${await getAppDataDir()}\\${name}`;
+  await Neutralino.filesystem.createDirectory(dir).catch(() => {});
+  return dir;
+}
+
+async function readSession() {
+  const dir = await sessionDir();
+  const entries = await Neutralino.filesystem.readDirectory(dir).catch(() => []);
+  const windows = [];
+  for (const entry of entries.filter((e) => e.type === 'FILE')) {
+    const data = await readJson(`${dir}\\${entry.entry}`);
+    if (data) windows.push({ ...data, file: entry.entry });
+  }
+  return windows;
+}
+
+// A window without documents is not kept; the windows closed before this one, and not together with it,
+// are no longer part of the last session
+async function archiveWindow(file, data) {
+  const dir = await sessionDir();
+  for (const window of await readSession()) {
+    if (window.closedAt < data.closedAt - SESSION_TOGETHER_MS) await Neutralino.filesystem.remove(`${dir}\\${window.file}`).catch(() => {});
+  }
+  if (!data.state?.columns?.some((c) => c.path)) return;
+  await Neutralino.filesystem.writeFile(`${dir}\\${file}`, JSON.stringify(data)).catch(() => {});
+}
+
+async function archiveInstance() {
+  const geometry = await windowGeometry();
+  await archiveWindow(`${NL_PID}.json`, { ...geometry, state: instanceState, closedAt: Date.now() });
+}
+
+// The windows of the last session, the one closed last first; they leave the session, the others are
+// handed over (one file each in "restore", named by the returned key) to the instances that will open them
+async function takeSession() {
+  const dir = await sessionDir();
+  const all = await readSession();
+  const last = Math.max(0, ...all.map((w) => w.closedAt || 0));
+  const windows = all.filter((w) => w.closedAt >= last - SESSION_TOGETHER_MS).sort((a, b) => b.closedAt - a.closedAt);
+  for (const window of all) await Neutralino.filesystem.remove(`${dir}\\${window.file}`).catch(() => {});
+  const restoreDir = await sessionDir('restore');
+  for (const [index, window] of windows.entries()) {
+    if (!index) continue;
+    window.key = `${NL_PID}-${index}`;
+    await Neutralino.filesystem.writeFile(`${restoreDir}\\${window.key}.json`, JSON.stringify(window)).catch(() => {});
+  }
+  return windows;
+}
+
+// The window handed over to this instance by takeSession (--session=key), removed once read
+async function takeRestoredWindow(key) {
+  const file = `${await sessionDir('restore')}\\${key}.json`;
+  const window = await readJson(file);
+  await Neutralino.filesystem.remove(file).catch(() => {});
+  return window;
+}
+
+// Moves and sizes the window as it was
+async function applyGeometry(window) {
+  if (Number.isFinite(window.width) && Number.isFinite(window.height)) {
+    await Neutralino.window.setSize({ width: window.width, height: window.height }).catch(() => {});
+  }
+  if (Number.isFinite(window.x) && Number.isFinite(window.y)) await Neutralino.window.move(window.x, window.y).catch(() => {});
+  if (window.maximized) await Neutralino.window.maximize().catch(() => {});
+}
+
 // Cascades the window starting from the centered position, skipping the ones already taken by open windows
-async function placeWindow() {
-  const start = await Neutralino.window.getPosition().catch(() => null);
+// (cascade false: the window keeps the position given, e.g. restored from the session)
+async function placeWindow(cascade = true) {
+  const start = cascade && await Neutralino.window.getPosition().catch(() => null);
   if (start) {
     const taken = await liveInstances();
     const isTaken = (x, y) => taken.some((p) => Math.abs(p.x - x) < 8 && Math.abs(p.y - y) < 8);

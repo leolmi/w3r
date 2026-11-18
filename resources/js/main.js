@@ -23,6 +23,10 @@ const fileList = document.getElementById('file-list');
 const fileListItems = document.getElementById('file-list-items');
 const btnOpenColumn = document.getElementById('btn-open-column');
 const btnCloseAll = document.getElementById('btn-close-all');
+const btnFileList = document.getElementById('btn-file-list');
+const btnHideFileList = document.getElementById('btn-hide-file-list');
+// Set by the user (toolbar button), the same for all windows (setting fileListHidden)
+let fileListHidden = false;
 const fileListCount = document.getElementById('file-list-count');
 const bookmarkList = document.getElementById('bookmark-list');
 const bookmarkListItems = document.getElementById('bookmark-list-items');
@@ -32,6 +36,7 @@ const btnSettings = document.getElementById('btn-settings');
 const settingsDialog = document.getElementById('settings');
 const settingZoom = document.getElementById('setting-zoom');
 const settingNewWindow = document.getElementById('setting-new-window');
+const settingRestoreSession = document.getElementById('setting-restore-session');
 const settingTheme = document.getElementById('setting-theme');
 const settingMdTheme = document.getElementById('setting-md-theme');
 const settingPageWidth = document.getElementById('setting-page-width');
@@ -110,12 +115,15 @@ class Column {
       <header class="column-header">
         <span class="column-title"></span>
         <span class="column-spacer"></span>
-        <button class="column-detach" title="Sposta in una nuova finestra" aria-label="Sposta in una nuova finestra">
-          <span class="icon" style="--icon: url(/icons/open_in_new.svg)"></span>
-        </button>
-        <button class="column-close" title="Chiudi colonna" aria-label="Chiudi colonna">×</button>
+        <span class="column-actions">
+          <button class="column-detach" title="Sposta in una nuova finestra" aria-label="Sposta in una nuova finestra">
+            <span class="icon" style="--icon: url(/icons/open_in_new.svg)"></span>
+          </button>
+          <button class="column-close" title="Chiudi colonna" aria-label="Chiudi colonna">×</button>
+        </span>
       </header>
       <button class="column-close-overlay" title="Chiudi documento" aria-label="Chiudi documento">×</button>
+      <button class="column-path" aria-haspopup="menu"></button>
       <div class="column-scroller">
         <div class="sheet">
           <article class="markdown-body">
@@ -126,6 +134,7 @@ class Column {
         </div>
       </div>`;
     this.title = this.el.querySelector('.column-title');
+    this.pathLine = this.el.querySelector('.column-path');
     this.scroller = this.el.querySelector('.column-scroller');
     this.sheet = this.el.querySelector('.sheet');
     this.content = this.el.querySelector('.markdown-body');
@@ -150,6 +159,7 @@ class Column {
     this.el.querySelector('.column-close').addEventListener('click', () => closeColumn(this));
     this.el.querySelector('.column-close-overlay').addEventListener('click', () => closeColumn(this));
     this.el.querySelector('.column-detach').addEventListener('click', () => detachColumn(this));
+    this.pathLine.addEventListener('click', () => { if (this.path) openPathMenu(this.pathLine, this.path); });
     this.el.querySelector('.column-header').addEventListener('pointerdown', (e) => startColumnDrag(this, e));
     // A click removes the reading point, unless it ends a drag of the tab
     this.mark.addEventListener('pointerdown', (e) => startMarkDrag(this, e));
@@ -641,19 +651,25 @@ async function openDroppedInNewColumn(file, beside, side) {
 // window reads the file from disk; a dropped file has no path and cannot be moved
 async function detachColumn(column) {
   if (!column.path || columns.length < 2 || !(await column.confirmLeave())) return;
-  const quote = (arg) => `"${arg}"`;
-  const flags = NL_ARGS.slice(1).filter((arg) => arg.startsWith('--') && !arg.startsWith('--at='));
   const position = await Neutralino.window.getPosition().catch(() => null);
-  if (position) flags.push(`--at=${position.x + CASCADE_STEP},${position.y + CASCADE_STEP}`);
-  const command = ['start', '""', quote(NL_ARGS[0]), ...flags.map(quote), '--new-window', quote(column.path)].join(' ');
+  const args = position ? [`--at=${position.x + CASCADE_STEP},${position.y + CASCADE_STEP}`] : [];
   try {
-    await Neutralino.os.execCommand(`cmd /c ${command}`, { background: true });
+    await launchInstance([...args, '--new-window', column.path]);
   } catch (err) {
     Neutralino.os.showMessageBox('Errore', 'Impossibile aprire una nuova finestra.', 'OK', 'ERROR');
     return;
   }
   column.savedText = column.editor.value;
   closeColumn(column);
+}
+
+// Starts a new instance (detached through "start", so it outlives this one) with the flags of this one
+// (e.g. those of the development mode) and the given arguments
+async function launchInstance(args) {
+  const quote = (arg) => `"${arg}"`;
+  const flags = NL_ARGS.slice(1).filter((arg) => arg.startsWith('--') && !/^--(at|session)=/.test(arg) && arg !== '--new-window');
+  const command = ['start', '""', quote(NL_ARGS[0]), ...[...flags, ...args].map(quote)].join(' ');
+  await Neutralino.os.execCommand(`cmd /c ${command}`, { background: true });
 }
 
 // The last column is replaced by an empty one, unless it is already empty
@@ -942,10 +958,24 @@ function updateUI() {
     column.el.classList.toggle('dirty', column.isDirty());
     column.el.classList.toggle('empty', !column.loaded);
     column.el.classList.toggle('on-disk', !!column.path);
+    // Path of the document, cut on the left; the marks keep it left to right inside the rtl box
+    if (column.pathLine.dataset.path !== (column.path || '')) {
+      column.pathLine.dataset.path = column.path || '';
+      column.pathLine.textContent = column.path ? `‎${column.path}‎` : '';
+      column.pathLine.title = column.path || '';
+    }
   }
   // The file list is useful only with at least two files, or with a reading point to go back to
   const unmarked = visited.filter((entry) => !hasBookmark(entry));
-  fileList.hidden = visited.length < 2 && !visited.some(isDropped) && !visited.some(hasBookmark);
+  // (hidden by the user, it stays hidden; the toolbar button shows it again)
+  const listUseful = visited.length >= 2 || visited.some(isDropped) || visited.some(hasBookmark);
+  fileList.hidden = !listUseful || fileListHidden;
+  btnFileList.disabled = !listUseful;
+  btnFileList.classList.toggle('pressed', !fileList.hidden);
+  btnFileList.setAttribute('aria-pressed', !fileList.hidden);
+  const toggleLabel = fileList.hidden ? `Mostra l'elenco dei file (${visited.length})` : "Nascondi l'elenco dei file";
+  btnFileList.title = toggleLabel;
+  btnFileList.setAttribute('aria-label', toggleLabel);
   fileListCount.textContent = `${unmarked.length} documenti`;
   btnCloseAll.disabled = !unmarked.length;
   renderFileList();
@@ -1066,7 +1096,7 @@ function fileItem(entry) {
       path.title = folder;
       path.addEventListener('click', (e) => {
         e.stopPropagation();
-        openPathMenu(path, entry, folder);
+        openPathMenu(path, entry);
       });
     }
     label.append(path);
@@ -1127,20 +1157,34 @@ function fileItem(entry) {
   return item;
 }
 
-// The state survives a page reload, so the app never falls back to an empty page
+// The state survives a page reload, so the app never falls back to an empty page; it is also kept in the
+// file of the instance, for the session restored at the next start
 function saveState() {
+  const state = {
+    columns: columns.map((c) => ({ path: c.path, back: c.back, forward: c.forward, wrap: c.wrap })),
+    active: columns.indexOf(active),
+    visited: visited.filter((entry) => !isDropped(entry))
+  };
   try {
-    sessionStorage.setItem('w3r-state', JSON.stringify({
-      columns: columns.map((c) => ({ path: c.path, back: c.back, forward: c.forward, wrap: c.wrap })),
-      active: columns.indexOf(active),
-      visited: visited.filter((entry) => !isDropped(entry))
-    }));
+    sessionStorage.setItem('w3r-state', JSON.stringify(state));
   } catch (err) { /* storage not available */ }
+  setInstanceState(state);
 }
 
-async function restoreState() {
-  let state = null;
-  try { state = JSON.parse(sessionStorage.getItem('w3r-state')); } catch (err) { /* nothing to restore */ }
+// The state saved before a page reload, if any
+function reloadState() {
+  try { return JSON.parse(sessionStorage.getItem('w3r-state')); } catch (err) { return null; }
+}
+
+// A window of the last session opens again without its empty columns (and the dropped files, which have no path)
+function sessionState(state) {
+  if (!state || !Array.isArray(state.columns)) return null;
+  const kept = state.columns.filter((c) => c.path);
+  const active = kept.indexOf(state.columns[state.active]);
+  return { ...state, columns: kept, active: Math.max(0, active) };
+}
+
+function restoreState(state) {
   if (!state || !Array.isArray(state.columns)) return;
   for (const path of state.visited || []) addVisited(path);
   state.columns.forEach((saved, index) => {
@@ -1269,6 +1313,14 @@ window.addEventListener('afterprint', unscaleWideBlocks);
 btnOpen.addEventListener('click', () => openDialog());
 btnOpenColumn.addEventListener('click', () => openDialog(true));
 btnCloseAll.addEventListener('click', closeAll);
+
+function setFileListHidden(value) {
+  fileListHidden = value;
+  updateUI();
+  saveSetting('fileListHidden', value);
+}
+btnFileList.addEventListener('click', () => setFileListHidden(!fileListHidden));
+btnHideFileList.addEventListener('click', () => setFileListHidden(true));
 btnPrint.addEventListener('click', printDocument);
 // Copies the document text as it is in the column (unsaved edits included), with its own line endings
 btnCopyText.addEventListener('click', async () => {
@@ -1326,10 +1378,10 @@ function placeMenu(menu, origin, side) {
   menu.style.top = `${Math.max(MENU_MARGIN, Math.min(top, height - MENU_MARGIN - h))}px`;
 }
 
-// Path menu of a file in the list: opens under the path clicked, or above it near the bottom
+// Path menu of a file (in the list or at the top of a column): opens under the path clicked, or above it near the bottom
 let pathMenuTarget = null;
-function openPathMenu(path, entry, folder) {
-  pathMenuTarget = { path, entry, folder };
+function openPathMenu(path, entry) {
+  pathMenuTarget = { path, entry };
   pathMenu.showPopover();
   placeMenu(pathMenu, path.getBoundingClientRect(), 'below');
 }
@@ -1337,11 +1389,13 @@ pathMenu.addEventListener('click', async (e) => {
   const item = e.target.closest('[data-action]');
   if (!item || !pathMenuTarget) return;
   pathMenu.hidePopover();
-  const { path, entry, folder } = pathMenuTarget;
+  const { path, entry } = pathMenuTarget;
   if (item.dataset.action === 'copy') {
     await Neutralino.clipboard.writeText(entry);
+    const text = path.textContent;
     path.textContent = 'Percorso copiato';
-    setTimeout(() => { path.textContent = `‎${folder}‎`; }, 1200);
+    // Not restored if the path was rewritten in the meantime (another document in the column)
+    setTimeout(() => { if (path.textContent === 'Percorso copiato') path.textContent = text; }, 1200);
   } else {
     // Explorer opens the folder with the file selected
     await Neutralino.os.execCommand(`explorer /select,"${entry}"`, { background: true }).catch(() => {
@@ -1418,6 +1472,7 @@ setInterval(checkChangedFiles, CHANGE_CHECK_INTERVAL);
 btnSettings.addEventListener('click', async () => {
   const settings = await loadSettings();
   settingNewWindow.checked = !!settings.newWindowPerFile;
+  settingRestoreSession.checked = !!settings.restoreSession;
   settingCheckUpdates.checked = settings.checkUpdates !== false;
   applyTheme(settings);
   settingTheme.value = theme;
@@ -1451,6 +1506,7 @@ settingPageWidthCustom.addEventListener('change', () => {
 });
 settingZoom.addEventListener('change', () => setZoom(Number(settingZoom.value)));
 settingNewWindow.addEventListener('change', () => saveSetting('newWindowPerFile', settingNewWindow.checked));
+settingRestoreSession.addEventListener('change', () => saveSetting('restoreSession', settingRestoreSession.checked));
 settingCheckUpdates.addEventListener('change', () => saveSetting('checkUpdates', settingCheckUpdates.checked));
 btnCheckUpdates.addEventListener('click', () => checkForUpdates(true));
 document.getElementById('app-version').textContent = NL_APPVERSION;
@@ -1617,6 +1673,7 @@ Neutralino.events.on('ready', async () => {
   applyTheme(settings);
   applyPageWidth(settings);
   if (ZOOM_LEVELS.includes(settings.zoom)) setZoom(settings.zoom, false);
+  fileListHidden = !!settings.fileListHidden;
 
   const fileArg = NL_ARGS.slice(1).find((arg) => !arg.startsWith('--'));
   const newWindow = NL_ARGS.includes('--new-window');
@@ -1631,10 +1688,29 @@ Neutralino.events.on('ready', async () => {
     return;
   }
 
-  // The window starts hidden, so it shows up already in its cascade position (from --at, if given)
-  const at = /^--at=(-?\d+),(-?\d+)$/.exec(NL_ARGS.find((arg) => arg.startsWith('--at=')) || '');
-  if (at) await Neutralino.window.move(Number(at[1]), Number(at[2])).catch(() => {});
-  await placeWindow();
+  const firstWindow = !(await liveInstances()).length;
+  const updated = await finishUpdate().catch(() => null);
+  const reloaded = reloadState();
+
+  // A window of the last session: handed over by the first window (--session), or the first window itself,
+  // started with nothing else to open (no file, no update, not a page reload), which starts the others
+  let restored = null;
+  const sessionKey = (NL_ARGS.find((arg) => arg.startsWith('--session=')) || '').slice('--session='.length);
+  if (sessionKey) restored = await takeRestoredWindow(sessionKey);
+  else if (firstWindow && settings.restoreSession && !fullPath && !newWindow && !updated?.paths?.length && !reloaded) {
+    const session = await takeSession();
+    restored = session[0] || null;
+    for (const window of session.slice(1)) await launchInstance([`--session=${window.key}`]).catch(() => {});
+  }
+
+  // The window starts hidden, so it shows up already in its place: as it was in the session, or in its
+  // cascade position (from --at, if given)
+  if (restored) await applyGeometry(restored);
+  else {
+    const at = /^--at=(-?\d+),(-?\d+)$/.exec(NL_ARGS.find((arg) => arg.startsWith('--at=')) || '');
+    if (at) await Neutralino.window.move(Number(at[1]), Number(at[2])).catch(() => {});
+  }
+  await placeWindow(!restored);
   await Neutralino.window.show();
   if (newWindow) bringToFront();
   watchInbox(async (file) => {
@@ -1643,27 +1719,29 @@ Neutralino.events.on('ready', async () => {
   });
 
   bookmarks = await loadBookmarks();
-  const updated = await finishUpdate().catch(() => null);
   if (fullPath) active.navigateTo(fullPath);
   else if (updated?.paths?.length) {
     for (const [index, path] of updated.paths.entries()) {
       if (index) await openInNewColumn(path); else await active.navigateTo(path);
     }
-  } else restoreState();
+  } else restoreState(restored ? sessionState(restored.state) : reloaded);
   addBookmarked();
   updateUI();
+  saveState();
   if (updated) flashBadge(`w3r aggiornato alla versione ${updated.to}`, 4000);
 
   // Only the first window looks for updates at startup
-  if (settings.checkUpdates !== false && !(await liveInstances()).length) {
+  if (settings.checkUpdates !== false && firstWindow) {
     setTimeout(() => checkForUpdates(false), UPDATE_STARTUP_DELAY);
   }
 });
 
+// The window goes to the session (for the next start) once its documents may be left
 Neutralino.events.on('windowClose', async () => {
   for (const column of columns) {
     if (!(await column.confirmLeave())) return;
   }
+  await archiveInstance();
   await removeInstance();
   Neutralino.app.exit();
 });
