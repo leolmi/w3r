@@ -39,9 +39,6 @@
     <button id="btn-reload" class="icon-btn" title="Ricarica: il file è stato modificato da un altro programma (F5)" aria-label="Ricarica il file modificato" disabled>
       <span class="icon" style="--icon: url(/icons/refresh.svg)"></span>
     </button>
-    <button id="btn-insert" class="icon-btn" title="Inserisci" aria-label="Inserisci" aria-haspopup="menu" aria-expanded="false" popovertarget="insert-menu" disabled>
-      <span class="icon" style="--icon: url(/icons/add_box.svg)"></span>
-    </button>
     <button id="btn-print" class="icon-btn" title="Stampa (Ctrl+P)" aria-label="Stampa" disabled>
       <span class="icon" style="--icon: url(/icons/print.svg)"></span>
     </button>
@@ -75,9 +72,6 @@
         <button id="btn-close-all" class="icon-btn small" title="Chiudi i documenti senza punto di lettura e svuota l'elenco" aria-label="Chiudi i documenti senza punto di lettura">
           <span class="icon" style="--icon: url(/icons/playlist_remove.svg)"></span>
         </button>
-        <button id="btn-hide-file-list" class="icon-btn small" title="Nascondi l'elenco dei file" aria-label="Nascondi l'elenco dei file">
-          <span class="icon" style="--icon: url(/icons/left_panel_close.svg)"></span>
-        </button>
       </span>
     </header>
     <ul id="file-list-items" class="file-items"></ul>
@@ -88,9 +82,22 @@
       <ul id="bookmark-list-items" class="file-items"></ul>
     </section>
   </aside>
-  <div id="insert-menu" class="menu" role="menu" aria-label="Inserisci" popover>
-    <button class="menu-item" role="menuitem" data-insert="page-break">
-      <span class="icon" style="--icon: url(/icons/page_break.svg)"></span>Salto pagina
+  <div id="file-list-resizer" class="resizer" role="separator" aria-orientation="vertical" aria-label="Larghezza dell'elenco dei file" title="Trascina per allargare l'elenco, doppio clic per tornare alla larghezza iniziale"></div>
+  <div id="alert-menu" class="menu" role="menu" aria-label="Avviso" popover>
+    <button class="menu-item" role="menuitem" data-alert="NOTE">
+      <span class="icon" style="--icon: url(/icons/alert.svg); color: #0969da"></span>Nota
+    </button>
+    <button class="menu-item" role="menuitem" data-alert="TIP">
+      <span class="icon" style="--icon: url(/icons/alert.svg); color: #1a7f37"></span>Suggerimento
+    </button>
+    <button class="menu-item" role="menuitem" data-alert="IMPORTANT">
+      <span class="icon" style="--icon: url(/icons/alert.svg); color: #8250df"></span>Importante
+    </button>
+    <button class="menu-item" role="menuitem" data-alert="WARNING">
+      <span class="icon" style="--icon: url(/icons/alert.svg); color: #9a6700"></span>Avviso
+    </button>
+    <button class="menu-item" role="menuitem" data-alert="CAUTION">
+      <span class="icon" style="--icon: url(/icons/alert.svg); color: #cf222e"></span>Attenzione
     </button>
   </div>
   <div id="path-menu" class="menu" role="menu" aria-label="Percorso" popover>

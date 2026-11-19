@@ -13,11 +13,14 @@ Visualizzatore e stampa di file Markdown per Windows, basato su [Neutralinojs](h
   file e cartelle sulla finestra. Un file aperto da Esplora risorse va nell'ultima finestra di w3r
   usata, oppure in una nuova (Impostazioni).
 - **Modifica**: il foglio si gira e mostra il testo Markdown; salvataggio, annullamento di tutte le
-  modifiche e inserimento del salto pagina. Un file modificato da un altro programma si può ricaricare.
+  modifiche. Una barra sopra il testo formatta la selezione (titoli, grassetto, elenchi, citazioni...)
+  e inserisce tabelle, blocchi di codice, diagrammi di flusso, formule, avvisi, note a piè di pagina,
+  linee e salti pagina. Un file modificato da un altro programma si può ricaricare.
 - **Punti di lettura**: un segnalibro per documento, condiviso tra le finestre; alla riapertura il
   documento torna a quel punto.
 - **Elenco dei file** nel pannello a sinistra: i documenti visti nella finestra e quelli con un punto
-  di lettura. Si nasconde e si riapre dal pulsante in cima alla barra degli strumenti.
+  di lettura. Si nasconde e si riapre dal pulsante in cima alla barra degli strumenti; si allarga
+  trascinandone il bordo destro (doppio clic per tornare alla larghezza iniziale).
 - **Percorso del documento** in cima a ogni colonna: al clic il menu per copiarlo negli appunti o
   aprirlo in Esplora risorse.
 - **Riapertura dell'ultima sessione** (Impostazioni, disattivata di default): avviando w3r senza un

@@ -398,6 +398,33 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 .sheet.wrap .markdown-body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sheet.wrap .markdown-body pre code { white-space: inherit; overflow-wrap: inherit; }
 
+/* Toolbar over the source, only while editing: as wide as the page, it wraps in a narrow column */
+.edit-toolbar {
+  display: none;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  width: calc(100% - 2 * var(--scrollbar-width));
+  max-width: calc(var(--sheet-width) * var(--zoom, 1));
+  margin: 8px auto 0;
+  padding: 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.column.editing .edit-toolbar { display: flex; }
+/* With a single document, clear of the close button over the top-right corner */
+#columns:not(.multi) .edit-toolbar { width: calc(100% - 2 * (var(--scrollbar-width) + 48px)); }
+.column.editing .column-scroller { padding-top: 8px; }
+
+.edit-toolbar .separator { width: 1px; height: 20px; margin: 0 4px; background: var(--border); }
+.edit-toolbar .glyph { font: 17px/1 Georgia, "Times New Roman", serif; }
+.glyph-bold { font-weight: 700; }
+.glyph-italic { font-style: italic; }
+.glyph-strike { text-decoration: line-through; }
+
 /* Drop-down menu of a sidebar button, opened on its right (position set on open) */
 .menu {
   position: fixed;
@@ -491,7 +518,8 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 #file-list[hidden] { display: none; }
 
 #file-list {
-  flex: 0 0 210px;
+  flex: 0 0 var(--file-list-width, 210px);
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -499,6 +527,30 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   background: var(--surface);
   border-right: 1px solid var(--border);
 }
+
+/* Handle on the right edge of the file list: drag to resize it (width limits in main.js) */
+.resizer {
+  flex: 0 0 7px;
+  margin: 0 -3px 0 -4px;
+  position: relative;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none;
+}
+.resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.resizer:hover::after, body.resizing .resizer::after { opacity: 1; }
+body.resizing, body.resizing * { cursor: col-resize !important; user-select: none; }
+#file-list[hidden] + .resizer { display: none; }
 
 .file-list-actions { display: flex; align-items: center; gap: 2px; }
 
@@ -609,7 +661,7 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
 .file-items li:hover .remove { visibility: visible; }
 .file-items .remove:hover { background: var(--border); }
 
-@media (max-width: 720px) { #file-list { display: none; } }
+@media (max-width: 720px) { #file-list, .resizer { display: none; } }
 
 /* Empty column: the hint sits on the gray background, centered, without the page */
 .column.empty .column-scroller { display: flex; align-items: center; justify-content: center; }
@@ -699,12 +751,12 @@ body.column-dragging, body.column-dragging * { cursor: grabbing !important; user
   @page { margin: 15mm; }
 
   html, body { display: block; background: #fff; height: auto; }
-  .sidebar, #zoom-badge, #file-list, .scroll-btn, .sheet .bookmark { display: none !important; }
+  .sidebar, #zoom-badge, #file-list, .resizer, .scroll-btn, .sheet .bookmark { display: none !important; }
   #columns-area { display: block; }
   #columns, .column, .column-scroller { display: block; overflow: visible; padding: 0; min-width: 0; border: none; }
   .column + .column { border-left: none; }
   #columns.multi .column { width: auto; }
-  .column-header, .column-close-overlay, .column-path { display: none !important; }
+  .column-header, .column-close-overlay, .column-path, .edit-toolbar { display: none !important; }
   .column:not(.active) { display: none; }
 
   .sheet {

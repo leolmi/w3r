@@ -16,15 +16,14 @@ const btnSave = document.getElementById('btn-save');
 const btnDiscard = document.getElementById('btn-discard');
 const btnReload = document.getElementById('btn-reload');
 const btnWrap = document.getElementById('btn-wrap');
-const btnInsert = document.getElementById('btn-insert');
-const insertMenu = document.getElementById('insert-menu');
+const alertMenu = document.getElementById('alert-menu');
 const pathMenu = document.getElementById('path-menu');
 const fileList = document.getElementById('file-list');
 const fileListItems = document.getElementById('file-list-items');
 const btnOpenColumn = document.getElementById('btn-open-column');
 const btnCloseAll = document.getElementById('btn-close-all');
 const btnFileList = document.getElementById('btn-file-list');
-const btnHideFileList = document.getElementById('btn-hide-file-list');
+const fileListResizer = document.getElementById('file-list-resizer');
 // Set by the user (toolbar button), the same for all windows (setting fileListHidden)
 let fileListHidden = false;
 const fileListCount = document.getElementById('file-list-count');
@@ -323,6 +322,7 @@ class Column {
       </header>
       <button class="column-close-overlay" title="Chiudi documento" aria-label="Chiudi documento">×</button>
       <button class="column-path" aria-haspopup="menu"></button>
+      <div class="edit-toolbar" role="toolbar" aria-label="Formattazione e inserimento">${editToolbarHtml()}</div>
       <div class="column-scroller">
         <div class="sheet">
           <article class="markdown-body">
@@ -338,6 +338,7 @@ class Column {
     this.sheet = this.el.querySelector('.sheet');
     this.content = this.el.querySelector('.markdown-body');
     this.editor = this.el.querySelector('.editor');
+    this.toolbar = this.el.querySelector('.edit-toolbar');
     this.mark = this.el.querySelector('.bookmark');
     // Set when the document opens at its reading point: the point is kept in view while images load,
     // until the user scrolls
@@ -375,7 +376,17 @@ class Column {
       if (this.followMark) this.scrollToMark();
     }).observe(this.content);
 
-    this.editor.addEventListener('input', () => { this.fitEditor(); updateUI(); });
+    this.editor.addEventListener('input', () => { this.edited = true; this.fitEditor(); updateUI(); });
+    // The toolbar does not take the focus, so the selection in the source stays where it is
+    this.toolbar.addEventListener('mousedown', (e) => e.preventDefault());
+    this.toolbar.addEventListener('click', (e) => {
+      const button = e.target.closest('[data-tool]');
+      if (button && this.editing) applyTool(this, button.dataset.tool, button);
+      this.scheduleToolbarUpdate();
+    });
+    for (const type of ['input', 'select', 'selectionchange', 'keyup', 'mouseup', 'focus']) {
+      this.editor.addEventListener(type, () => this.scheduleToolbarUpdate());
+    }
     // Tab inserts a tab character instead of moving the focus (execCommand keeps the undo history)
     this.editor.addEventListener('keydown', (e) => {
       if (e.key !== 'Tab' || e.ctrlKey || e.altKey) return;
@@ -639,7 +650,7 @@ class Column {
 
     this.eol = text.includes('\r\n') ? '\r\n' : '\n';
     this.savedText = text.replace(/\r\n/g, '\n');
-    this.editor.value = this.savedText;
+    this.setSource(this.savedText);
     this.renderMarkdown(this.savedText);
     this.setEditing(false);
     this.loaded = true;
@@ -668,21 +679,90 @@ class Column {
     saveState();
   }
 
-  // Inserts a block on lines of its own at the caret, separated by blank lines (execCommand keeps the undo history)
-  insertBlock(block) {
+  // Replaces a range of the source and selects [selStart, selEnd] (execCommand keeps the undo history)
+  replaceRange(start, end, text, selStart = start + text.length, selEnd = selStart) {
+    this.editor.focus({ preventScroll: true });
+    this.editor.setSelectionRange(start, end);
+    if (text || start !== end) document.execCommand('insertText', false, text);
+    this.editor.setSelectionRange(selStart, selEnd);
+  }
+
+  // Inserts a block on lines of its own in place of the selection, separated by blank lines;
+  // select is the range to select inside the block (by default the caret goes after it)
+  insertBlock(block, select = [block.length, block.length]) {
     const { value, selectionStart, selectionEnd } = this.editor;
     const before = value.slice(0, selectionStart);
     const after = value.slice(selectionEnd);
     const prefix = !before || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
     const suffix = after.startsWith('\n\n') ? '' : after.startsWith('\n') || !after ? '\n' : '\n\n';
-    this.editor.focus({ preventScroll: true });
-    document.execCommand('insertText', false, `${prefix}${block}${suffix}`);
+    const start = selectionStart + prefix.length;
+    this.replaceRange(selectionStart, selectionEnd, `${prefix}${block}${suffix}`, start + select[0], start + select[1]);
+  }
+
+  // Puts markers around the selection (or a placeholder, selected); inside a span of that format
+  // (span, from toolState) its markers are taken away instead, keeping the selection on the same text
+  wrapSelection(mark, placeholder, span) {
+    const { value, selectionStart: s, selectionEnd: e } = this.editor;
+    const n = mark.length;
+    if (span) {
+      const inner = value.slice(span.start + n, span.end - n);
+      const keep = (x) => Math.max(span.start, Math.min(span.start + inner.length, x - n));
+      this.replaceRange(span.start, span.end, inner, keep(s), keep(e));
+      return;
+    }
+    const text = value.slice(s, e) || placeholder;
+    this.replaceRange(s, e, `${mark}${text}${mark}`, s + n, s + n + text.length);
+  }
+
+  // Source set from the program (file read, changes discarded): the undo history starts again
+  setSource(text) {
+    this.editor.value = text;
+    this.edited = false;
+    this.scheduleToolbarUpdate();
+  }
+
+  // The buttons of the toolbar show what the selection is in (once per frame, however many events).
+  // Undo and redo: the browser knows its history only for the focused source, so the state is
+  // read while this one has the focus; after setSource the browser still claims an undo, without one
+  scheduleToolbarUpdate() {
+    if (this.toolbarFrame) return;
+    this.toolbarFrame = requestAnimationFrame(() => {
+      this.toolbarFrame = 0;
+      if (!this.editing) return;
+      if (document.activeElement === this.editor) {
+        this.history = { undo: document.queryCommandEnabled('undo'), redo: document.queryCommandEnabled('redo') };
+      }
+      const state = toolState(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd);
+      for (const button of this.toolbar.querySelectorAll('[data-tool]')) {
+        const tool = button.dataset.tool;
+        if (tool === 'undo' || tool === 'redo') {
+          button.disabled = !(this.edited && this.history?.[tool]);
+          continue;
+        }
+        const on = !!state[tool];
+        button.classList.toggle('pressed', on);
+        button.setAttribute('aria-pressed', on);
+      }
+    });
+  }
+
+  // Rewrites the whole lines touched by the selection with transform(lines); a caret goes to the end of
+  // the lines rewritten, a selection covers them
+  transformLines(transform) {
+    const { value, selectionStart: s, selectionEnd: e } = this.editor;
+    const start = value.lastIndexOf('\n', s - 1) + 1;
+    const last = e > s && value[e - 1] === '\n' ? e - 1 : e;
+    const end = value.indexOf('\n', last) < 0 ? value.length : value.indexOf('\n', last);
+    const text = transform(value.slice(start, end).split('\n')).join('\n');
+    if (s === e) this.replaceRange(start, end, text);
+    else this.replaceRange(start, end, text, start, start + text.length);
   }
 
   setEditing(value) {
     this.editing = value;
     this.sheet.classList.toggle('editing', value);
-    if (value) this.fitEditor();
+    this.el.classList.toggle('editing', value);
+    if (value) { this.fitEditor(); this.scheduleToolbarUpdate(); }
     else if (this.renderedText !== this.editor.value) this.renderMarkdown(this.editor.value);
     this.placeMark();
   }
@@ -755,7 +835,7 @@ class Column {
     const choice = await Neutralino.os.showMessageBox('Annulla modifiche',
       `Annullare tutte le modifiche a ${this.name}?`, 'OK_CANCEL', 'WARNING');
     if (choice !== 'OK') return;
-    this.editor.value = this.savedText;
+    this.setSource(this.savedText);
     if (this.editing) this.fitEditor();
     else this.renderMarkdown(this.savedText);
     updateUI();
@@ -1200,8 +1280,7 @@ function updateUI() {
   btnWrap.disabled = !active.loaded;
   btnWrap.classList.toggle('pressed', active.wrap);
   btnWrap.setAttribute('aria-pressed', active.wrap);
-  btnInsert.disabled = !active.editing;
-  if (!active.editing) insertMenu.hidePopover();
+  if (alertMenuColumn && !alertMenuColumn.editing) alertMenu.hidePopover();
 
   const label = active.editing ? 'Anteprima (Ctrl+E)' : 'Modifica (Ctrl+E)';
   btnEdit.title = label;
@@ -1238,6 +1317,7 @@ function updateUI() {
   const toggleLabel = fileList.hidden ? `Mostra l'elenco dei file (${visited.length})` : "Nascondi l'elenco dei file";
   btnFileList.title = toggleLabel;
   btnFileList.setAttribute('aria-label', toggleLabel);
+  btnFileList.querySelector('.icon').style.setProperty('--icon', `url(/icons/left_panel_${fileList.hidden ? 'open' : 'close'}.svg)`);
   fileListCount.textContent = `${unmarked.length} documenti`;
   btnCloseAll.disabled = !unmarked.length;
   renderFileList();
@@ -1582,7 +1662,39 @@ function setFileListHidden(value) {
   saveSetting('fileListHidden', value);
 }
 btnFileList.addEventListener('click', () => setFileListHidden(!fileListHidden));
-btnHideFileList.addEventListener('click', () => setFileListHidden(true));
+
+// Width of the file list: dragged from its right edge, between the initial width and a maximum;
+// a double click goes back to the initial width
+const FILE_LIST_WIDTH_MIN = 210;
+const FILE_LIST_WIDTH_MAX = 480;
+let fileListWidth = FILE_LIST_WIDTH_MIN;
+
+function setFileListWidth(width, save = true) {
+  fileListWidth = Math.round(Math.max(FILE_LIST_WIDTH_MIN, Math.min(FILE_LIST_WIDTH_MAX, Number(width) || FILE_LIST_WIDTH_MIN)));
+  document.documentElement.style.setProperty('--file-list-width', `${fileListWidth}px`);
+  if (save) saveSetting('fileListWidth', fileListWidth);
+}
+
+fileListResizer.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const startX = e.clientX;
+  const startWidth = fileList.getBoundingClientRect().width;
+  fileListResizer.setPointerCapture(e.pointerId);
+  document.body.classList.add('resizing');
+  const move = (ev) => setFileListWidth(startWidth + ev.clientX - startX, false);
+  const end = () => {
+    fileListResizer.removeEventListener('pointermove', move);
+    fileListResizer.removeEventListener('pointerup', end);
+    fileListResizer.removeEventListener('pointercancel', end);
+    document.body.classList.remove('resizing');
+    saveSetting('fileListWidth', fileListWidth);
+  };
+  fileListResizer.addEventListener('pointermove', move);
+  fileListResizer.addEventListener('pointerup', end);
+  fileListResizer.addEventListener('pointercancel', end);
+});
+fileListResizer.addEventListener('dblclick', () => setFileListWidth(FILE_LIST_WIDTH_MIN));
 btnPrint.addEventListener('click', printDocument);
 // Copies the document text as it is in the column (unsaved edits included), with its own line endings
 btnCopyText.addEventListener('click', async () => {
@@ -1600,25 +1712,260 @@ btnSave.addEventListener('click', () => active.save());
 btnDiscard.addEventListener('click', () => active.discard());
 btnReload.addEventListener('click', () => active.reload());
 btnWrap.addEventListener('click', () => { if (active.loaded) active.setWrap(!active.wrap); });
-// Insert menu, for the source of the active column: opens on the right of its button
-const INSERTS = { 'page-break': '<!-- pagebreak -->' };
-insertMenu.addEventListener('beforetoggle', (e) => {
-  btnInsert.setAttribute('aria-expanded', e.newState === 'open');
-  btnInsert.classList.toggle('pressed', e.newState === 'open');
-  // Hidden until placed, since its size is known only once open
-  if (e.newState === 'open') insertMenu.style.visibility = 'hidden';
+// Toolbar over the source, while editing: formatting of the selection and blocks to insert
+const EDIT_TOOLS = [
+  { tool: 'undo', icon: 'edit_undo', title: 'Annulla (Ctrl+Z)' },
+  { tool: 'redo', icon: 'edit_redo', title: 'Ripeti (Ctrl+Y)' },
+  null,
+  { tool: 'heading', icon: 'heading', title: 'Titolo: livello 1, 2, 3, nessuno' },
+  { tool: 'bold', glyph: 'B', title: 'Grassetto' },
+  { tool: 'italic', glyph: 'I', title: 'Corsivo' },
+  { tool: 'strike', glyph: 'S', title: 'Barrato' },
+  { tool: 'code', icon: 'code', title: 'Codice nel testo' },
+  { tool: 'link', icon: 'link', title: 'Collegamento' },
+  { tool: 'image', icon: 'image', title: 'Immagine' },
+  null,
+  { tool: 'bullet', icon: 'list_bulleted', title: 'Elenco puntato' },
+  { tool: 'ordered', icon: 'list_numbered', title: 'Elenco numerato' },
+  { tool: 'task', icon: 'checklist', title: 'Elenco di attività' },
+  { tool: 'quote', icon: 'quote', title: 'Citazione' },
+  null,
+  { tool: 'table', icon: 'table', title: 'Tabella' },
+  { tool: 'code-block', icon: 'code_block', title: 'Blocco di codice' },
+  { tool: 'flowchart', icon: 'flowchart', title: 'Diagramma di flusso (Mermaid)' },
+  { tool: 'formula', icon: 'formula', title: 'Formula (KaTeX)' },
+  { tool: 'alert', icon: 'alert', title: 'Avviso', menu: true },
+  { tool: 'footnote', icon: 'footnote', title: 'Nota a piè di pagina' },
+  { tool: 'rule', icon: 'horizontal_rule', title: 'Linea orizzontale' },
+  { tool: 'page-break', icon: 'page_break', title: 'Salto pagina' }
+];
+
+function editToolbarHtml() {
+  return EDIT_TOOLS.map((item) => {
+    if (!item) return '<span class="separator"></span>';
+    const face = item.glyph
+      ? `<span class="glyph glyph-${item.tool}">${item.glyph}</span>`
+      : `<span class="icon" style="--icon: url(/icons/${item.icon}.svg)"></span>`;
+    const menu = item.menu ? ' aria-haspopup="menu" aria-expanded="false"' : '';
+    return `<button class="icon-btn small" data-tool="${item.tool}" title="${item.title}" aria-label="${item.title}"${menu}>${face}</button>`;
+  }).join('');
+}
+
+const TABLE_TEMPLATE = '| Colonna 1 | Colonna 2 | Colonna 3 |\n| --- | --- | --- |\n| Testo | Testo | Testo |';
+const FLOWCHART_TEMPLATE = '```mermaid\nflowchart TD\n    A[Inizio] --> B{Condizione?}\n    B -- Sì --> C[Azione]\n    B -- No --> D[Fine]\n    C --> D\n```';
+// An existing list marker (task, bullet or number), after the indentation
+const LIST_MARKER = /^(\s*)(?:[-*+] \[[ xX]\] |([-*+]) |(\d+)[.)] )?/;
+
+// Turns the lines into a list of the kind given, or back to plain lines if they already are one;
+// blank lines between the selected ones stay blank
+function listKind(line) {
+  const m = LIST_MARKER.exec(line);
+  if (!m[0].trim()) return null;
+  return m[2] ? 'bullet' : m[3] ? 'ordered' : 'task';
+}
+
+function isList(lines, kind) {
+  const filled = lines.filter((line) => line.trim());
+  return filled.length > 0 && filled.every((line) => listKind(line) === kind);
+}
+
+function listLines(lines, kind) {
+  const off = isList(lines, kind);
+  let number = 0;
+  return lines.map((line) => {
+    if (!line.trim() && lines.length > 1) return line;
+    const m = LIST_MARKER.exec(line);
+    const rest = line.slice(m[0].length);
+    if (off) return m[1] + rest;
+    const marker = kind === 'task' ? '- [ ] ' : kind === 'bullet' ? '- ' : `${++number}. `;
+    return m[1] + marker + rest;
+  });
+}
+
+// Inline formats: the patterns of a span on one line, the length of its markers
+const INLINE_SPANS = {
+  bold: [[/\*\*(?!\s)[^\n]*?(?<!\s)\*\*/g, /__(?!\s)[^\n]*?(?<!\s)__/g], 2],
+  italic: [[/(?<![*\\])\*(?![\s*])[^*\n]*?(?<![\s*\\])\*(?!\*)/g, /(?<![\w\\])_(?![\s_])[^_\n]*?(?<![\s_\\])_(?!\w)/g], 1],
+  strike: [[/~~(?!\s)[^\n]*?(?<!\s)~~/g], 2],
+  code: [[/`[^`\n]+`/g], 1]
+};
+const LINK_SPAN = /!?\[[^\]\n]*\]\([^)\n]*\)/g;
+const FOOTNOTE_SPAN = /\[\^[^\]\s]+\]/g;
+const INLINE_MATH_SPAN = /\$(?!\s)[^$\n]*?(?<!\s)\$/g;
+const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)/;
+const RULE_LINE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const PAGE_BREAK_LINE = /^ {0,3}(?:<!--\s*(?:pagebreak|newpage)\s*-->|\\(?:pagebreak|newpage))\s*$/i;
+const ALERT_HEAD = /^ {0,3}>\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+
+// The span (start, end in the source) of one of the patterns around the selection, on the line given;
+// a caret just before or after a span is outside it
+function spanAround(patterns, line, lineStart, s, e) {
+  for (const pattern of patterns) {
+    for (const m of line.matchAll(pattern)) {
+      const start = lineStart + m.index;
+      const end = start + m[0].length;
+      if (s >= start && e <= end && !(s === e && (s === start || s === end))) return { start, end, text: m[0] };
+    }
+  }
+  return null;
+}
+
+// What the selection of the source is in: the tools to show pressed, with the inline spans found
+function toolState(value, s, e) {
+  const lineStart = value.lastIndexOf('\n', s - 1) + 1;
+  const lineEnd = value.indexOf('\n', s) < 0 ? value.length : value.indexOf('\n', s);
+  const line = value.slice(lineStart, lineEnd);
+  const state = {};
+
+  // Fenced code and formula blocks, from the start of the document to the line of the caret
+  const before = value.slice(0, lineStart).split('\n');
+  before.pop();
+  let fence = null;
+  let math = false;
+  for (const text of before) {
+    if (fence) {
+      if (text.trim().startsWith(fence.mark) && !text.trim().slice(fence.mark.length).trim()) fence = null;
+      continue;
+    }
+    const m = FENCE.exec(text);
+    if (m && !math) { fence = { mark: m[1], info: m[2] }; continue; }
+    const trimmed = text.trim();
+    if (trimmed.startsWith('$$') && !(trimmed.length > 4 && trimmed.endsWith('$$'))) math = !math;
+  }
+  const opening = !fence && !math && FENCE.exec(line);
+  if (fence || opening) {
+    const info = (fence || { info: opening[2] }).info.toLowerCase();
+    state[info === 'mermaid' ? 'flowchart' : 'code-block'] = true;
+    return state;
+  }
+  if (math || line.trim().startsWith('$$')) { state.formula = true; return state; }
+
+  const inline = (patterns) => (e <= lineEnd ? spanAround(patterns, line, lineStart, s, e) : null);
+  for (const [tool, [patterns]] of Object.entries(INLINE_SPANS)) {
+    const span = inline(patterns);
+    if (span) state[tool] = span;
+  }
+  const link = inline([LINK_SPAN]);
+  if (link) state[link.text.startsWith('!') ? 'image' : 'link'] = true;
+  if (inline([INLINE_MATH_SPAN])) state.formula = true;
+  if (inline([FOOTNOTE_SPAN]) || /^\[\^[^\]\s]+\]:/.test(line)) state.footnote = true;
+
+  // Lines: the ones touched by the selection, as transformLines takes them
+  const last = e > s && value[e - 1] === '\n' ? e - 1 : e;
+  const end = value.indexOf('\n', last) < 0 ? value.length : value.indexOf('\n', last);
+  const lines = value.slice(lineStart, end).split('\n');
+  if (/^#{1,6}\s/.test(line)) state.heading = true;
+  for (const kind of ['bullet', 'ordered', 'task']) if (isList(lines, kind)) state[kind] = true;
+  if (line.trimStart().startsWith('|')) state.table = true;
+  if (RULE_LINE.test(line)) state.rule = true;
+  if (PAGE_BREAK_LINE.test(line)) state['page-break'] = true;
+  if (/^ {0,3}>/.test(line)) {
+    // An alert is a quote whose first line names its type
+    let first = before.length;
+    while (first > 0 && /^ {0,3}>/.test(before[first - 1])) first--;
+    const head = first < before.length ? before[first] : line;
+    if (ALERT_HEAD.test(head)) state.alert = true;
+    else if (lines.every((text) => text.startsWith('>'))) state.quote = true;
+  }
+  return state;
+}
+
+function applyTool(column, tool, button) {
+  const { editor } = column;
+  const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd);
+  const span = () => toolState(editor.value, editor.selectionStart, editor.selectionEnd)[tool];
+  switch (tool) {
+    case 'undo': case 'redo':
+      editor.focus({ preventScroll: true });
+      document.execCommand(tool);
+      break;
+    case 'bold': column.wrapSelection('**', 'testo in grassetto', span()); break;
+    case 'italic': column.wrapSelection('*', 'testo in corsivo', span()); break;
+    case 'strike': column.wrapSelection('~~', 'testo barrato', span()); break;
+    case 'code': column.wrapSelection('`', 'codice', span()); break;
+    // With text selected it becomes the label and the address is selected, otherwise the label is
+    case 'link': case 'image': {
+      const bang = tool === 'image' ? '!' : '';
+      const text = selected || (bang ? 'descrizione' : 'testo');
+      const target = bang ? 'immagine.png' : 'https://';
+      const s = editor.selectionStart;
+      const from = selected ? s + bang.length + text.length + 3 : s + bang.length + 1;
+      column.replaceRange(s, editor.selectionEnd, `${bang}[${text}](${target})`, from, from + (selected ? target.length : text.length));
+      break;
+    }
+    // # → ## → ### → plain line
+    case 'heading': column.transformLines((lines) => lines.map((line) => {
+      const m = /^(#{1,6})\s+/.exec(line);
+      const level = m ? m[1].length : 0;
+      const text = m ? line.slice(m[0].length) : line;
+      return level >= 3 ? text : `${'#'.repeat(level + 1)} ${text}`;
+    })); break;
+    case 'bullet': case 'ordered': case 'task': column.transformLines((lines) => listLines(lines, tool)); break;
+    case 'quote': column.transformLines((lines) => (lines.every((line) => line.startsWith('>'))
+      ? lines.map((line) => line.replace(/^> ?/, ''))
+      : lines.map((line) => (line ? `> ${line}` : '>')))); break;
+    case 'table': column.insertBlock(TABLE_TEMPLATE, [2, 11]); break;
+    case 'code-block': {
+      const code = selected.replace(/\n$/, '') || 'codice';
+      // With code selected the caret goes after the opening fence, for the language
+      column.insertBlock(`\`\`\`\n${code}\n\`\`\``, selected ? [3, 3] : [4, 4 + code.length]);
+      break;
+    }
+    case 'flowchart': {
+      const at = FLOWCHART_TEMPLATE.indexOf('Inizio');
+      column.insertBlock(FLOWCHART_TEMPLATE, [at, at + 6]);
+      break;
+    }
+    case 'formula': {
+      const tex = selected.trim() || 'E = mc^2';
+      column.insertBlock(`$$\n${tex}\n$$`, [3, 3 + tex.length]);
+      break;
+    }
+    case 'alert': openAlertMenu(column, button); break;
+    // The reference after the selection, the note (next free number) at the end of the document
+    case 'footnote': {
+      const used = [...editor.value.matchAll(/\[\^(\d+)\]/g)].map((m) => Number(m[1]));
+      const n = Math.max(0, ...used) + 1;
+      const e = editor.selectionEnd;
+      const ref = `[^${n}]`;
+      column.replaceRange(e, e, ref);
+      const end = editor.value.length;
+      const gap = editor.value.endsWith('\n\n') ? '' : editor.value.endsWith('\n') ? '\n' : '\n\n';
+      column.replaceRange(end, end, `${gap}${ref}: Testo della nota\n`, e + ref.length);
+      break;
+    }
+    case 'rule': column.insertBlock('---'); break;
+    case 'page-break': column.insertBlock('<!-- pagebreak -->'); break;
+  }
+}
+
+// Alert types, from the button of the toolbar: the selected lines go inside the alert
+let alertMenuColumn = null;
+function openAlertMenu(column, button) {
+  alertMenuColumn = column;
+  alertMenu.showPopover();
+  placeMenu(alertMenu, button.getBoundingClientRect(), 'below');
+  button.setAttribute('aria-expanded', 'true');
+}
+alertMenu.addEventListener('toggle', (e) => {
+  if (e.newState === 'open') return;
+  for (const button of document.querySelectorAll('[data-tool="alert"]')) button.setAttribute('aria-expanded', 'false');
 });
-insertMenu.addEventListener('toggle', (e) => {
-  if (e.newState !== 'open') return;
-  placeMenu(insertMenu, btnInsert.getBoundingClientRect(), 'right');
-  insertMenu.style.visibility = '';
-});
-insertMenu.addEventListener('click', (e) => {
-  const item = e.target.closest('[data-insert]');
+alertMenu.addEventListener('mousedown', (e) => e.preventDefault());
+alertMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('[data-alert]');
   if (!item) return;
-  insertMenu.hidePopover();
-  if (active.editing) active.insertBlock(INSERTS[item.dataset.insert]);
+  alertMenu.hidePopover();
+  const column = alertMenuColumn;
+  if (!column?.editing) return;
+  const { editor } = column;
+  const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd).replace(/\n$/, '');
+  const head = `> [!${item.dataset.alert}]\n`;
+  const body = (selected || 'Testo').split('\n').map((line) => (line ? `> ${line}` : '>')).join('\n');
+  const end = head.length + body.length;
+  column.insertBlock(head + body, selected ? [end, end] : [head.length + 2, end]);
 });
+
 // Places an open menu next to its origin, on the preferred side if it fits in the viewport, otherwise
 // on the opposite side, and in any case within the viewport edges
 const MENU_MARGIN = 4;
@@ -1936,6 +2283,7 @@ Neutralino.events.on('ready', async () => {
   applyPageWidth(settings);
   if (ZOOM_LEVELS.includes(settings.zoom)) setZoom(settings.zoom, false);
   fileListHidden = !!settings.fileListHidden;
+  setFileListWidth(settings.fileListWidth, false);
 
   const fileArg = NL_ARGS.slice(1).find((arg) => !arg.startsWith('--'));
   const newWindow = NL_ARGS.includes('--new-window');
