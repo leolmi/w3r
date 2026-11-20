@@ -1479,7 +1479,9 @@ function fileItem(entry) {
         if (choice !== 'OK') return;
         removeBookmark(entry);
       }
-      if (!openIn.length) visited.splice(visited.indexOf(entry), 1);
+      // Columns as they are now: they may have changed while the dialog was open
+      const index = visited.indexOf(entry);
+      if (!columnsShowing(entry).length && index >= 0) visited.splice(index, 1);
       updateUI();
       saveState();
     });
