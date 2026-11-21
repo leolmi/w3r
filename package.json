@@ -1,6 +1,6 @@
 {
   "name": "w3r",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Visualizzatore e stampa di file Markdown per Windows (Neutralinojs)",
   "private": true,
   "scripts": {
